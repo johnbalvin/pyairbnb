@@ -84,7 +84,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     
     # Get calendar and reviews data
     data["calendar"] = get_calendar(room_id, api_key, proxy_url)
-    data["reviews"] = get_reviews(product_id, api_key, proxy_url)
+    data["reviews"] = get_reviews(room_url, api_key, proxy_url)
     
     # Get price data if check-in and check-out dates are provided
     if check_in and check_out:
