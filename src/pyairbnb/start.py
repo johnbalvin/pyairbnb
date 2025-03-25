@@ -31,7 +31,7 @@ def get_calendar(room_id: str ,api_key: str = "", proxy_url: str = ""):
     current_year = datetime.now().year
     return calendar.get(room_id, current_month, current_year, api_key, proxy_url)
 
-def get_reviews(room_url: str , api_key: str = "", proxy_url: str = ""):
+def get_reviews(room_url: str , api_key: str = "", proxy_url: str = "", locale: str = "en", currency: str = "USD"):
     """
     Retrieves review data for a specified product.
 
@@ -39,6 +39,8 @@ def get_reviews(room_url: str , api_key: str = "", proxy_url: str = ""):
         room_url (str): The product room_url.
         api_key (str): The API key.
         proxy_url (str): The proxy URL.
+        locale (str): The locale (default is 'en').
+        currency (str): The currency (default is 'USD').
 
     Returns:
         dict: Reviews data.
@@ -47,10 +49,10 @@ def get_reviews(room_url: str , api_key: str = "", proxy_url: str = ""):
     product_id = price_input["product_id"]
     api_key = price_input["api_key"]
 
-    return reviews.get(product_id, api_key, proxy_url)
+    return reviews.get(product_id, api_key, proxy_url, locale, currency)
 
 def get_details(room_url: str = None, room_id: int = None, domain: str = "www.airbnb.com",
-                currency: str = None, check_in: str = None, check_out: str = None, proxy_url: str = None):
+                currency: str = None, check_in: str = None, check_out: str = None, proxy_url: str = None, locale: str = "en"):
     """
     Retrieves all details (calendar, reviews, price, and host details) for a specified room.
 
@@ -62,6 +64,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
         check_in (str): Check-in date for price information.
         check_out (str): Check-out date for price information.
         proxy_url (str): Proxy URL.
+        locale (str): The locale (default is 'en').
 
     Returns:
         dict: A dictionary with all room details.
@@ -84,7 +87,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     
     # Get calendar and reviews data
     data["calendar"] = get_calendar(room_id, api_key, proxy_url)
-    data["reviews"] = reviews.get(product_id, api_key, proxy_url)
+    data["reviews"] = reviews.get(product_id, api_key, proxy_url, locale, currency)
     
     # Get price data if check-in and check-out dates are provided
     if check_in and check_out:
@@ -184,3 +187,4 @@ def search_experience_by_taking_the_first_inputs_i_dont_care(user_input_text: st
             break
         result = result + result_tmp
     return result
+

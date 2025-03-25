@@ -5,18 +5,18 @@ import json
 
 ep="https://www.airbnb.com/api/v3/StaysPdpReviewsQuery/dec1c8061483e78373602047450322fd474e79ba9afa8d3dbbc27f504030f91d/"
 
-def get(product_id: str, api_key: str,proxy_url: str) -> str:
+def get(product_id: str, api_key: str,proxy_url: str, locale: str = "en", currency: str = "USD") -> str:
     offset = 0
     all_reviews = []
     while True:
-        reviews = get_from_offset(offset,product_id,api_key,proxy_url)
+        reviews = get_from_offset(offset,product_id,api_key,proxy_url, locale, currency)
         offset=offset+50
         if len(reviews)==0:
             break
         all_reviews.extend(reviews)
     return all_reviews    
 
-def get_from_offset(offset: int,product_id: str, api_key: str,proxy_url: str) -> str:
+def get_from_offset(offset: int,product_id: str, api_key: str,proxy_url: str, locale: str = "en", currency: str = "USD") -> str:
     headers = {
             "Accept": "application/json",
             "Content-Type": "application/json",
@@ -50,8 +50,8 @@ def get_from_offset(offset: int,product_id: str, api_key: str,proxy_url: str) ->
     dataRawVariables = json.dumps(variablesData)
     query = {
         "operationName": "StaysPdpReviewsQuery",
-        "locale": "en",
-        "currency": "USD",
+        "locale": locale,
+        "currency": currency,
         "variables": dataRawVariables,
         "extensions": dataRawExtension,
     }
