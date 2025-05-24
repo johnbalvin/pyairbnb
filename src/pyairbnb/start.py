@@ -228,8 +228,18 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
 
     # Delegate to existing search_all
     return search_all(
-        check_in, check_out,
-        ne_lat, ne_long, sw_lat, sw_long,
-        zoom_value, price_min, price_max,
-        place_type, amenities, currency, language, proxy_url
+        check_in=check_in,
+        check_out=check_out,
+        ne_lat=ne_lat,
+        ne_long=ne_long,
+        sw_lat=sw_lat,
+        sw_long=sw_long,
+        zoom_value=zoom_value,
+        price_min=price_min,
+        price_max=price_max,
+        place_type=place_type,
+        amenities=amenities,
+        currency=currency,
+        language=language,
+        proxy_url=proxy_url
     )
