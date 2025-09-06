@@ -1,9 +1,10 @@
 import re
 import pyairbnb.utils as utils
+import base64
 
 regex_number =  re.compile(r'\d+')
             
-def from_search(resultRaw):
+def from_map_search(resultRaw):
     mapResults = utils.get_nested_value(resultRaw,"data.presentation.staysSearch.mapResults.mapSearchResults","")
     idsMap = utils.get_nested_value(resultRaw,"data.presentation.staysSearch.mapResults.staysInViewport",{})
     datas = []
@@ -251,3 +252,126 @@ def from_details(meta):
                     data["amenities"].append(amenityGroup)
     return data
 
+def decode_listing_id(base64_id: str) -> int:
+    if not base64_id:
+        return 0
+    try:
+        decoded = base64.b64decode(base64_id).decode("utf-8")
+        match = re.search(r"(\d+)$", decoded)
+        if match:
+            return int(match.group(1))
+    except Exception as e:
+        print("Decode error:", e)
+    return 0
+
+def from_search(resultRaw):
+    results = utils.get_nested_value(resultRaw,"data.presentation.staysSearch.results.searchResults","")
+    datas = []
+    for result in results:
+        type_name = utils.get_nested_value(result,"__typename","")
+        if type_name!="StaySearchResult":
+            continue
+        pr = utils.get_nested_value(result,"structuredDisplayPrice",{})
+        id = 0
+        id = decode_listing_id(utils.get_nested_value(result,"demandStayListing.id",""))
+        data = {
+            "room_id":  id,
+            "category": "",#can't find it on the new data returned by airbnb
+            "structuredContent": utils.get_nested_value(result,"structuredContent",{}), #new data that could be usefull
+            "passportData": utils.get_nested_value(result,"passportData",{}), #new data that could be usefull
+            "paymentMessages": utils.get_nested_value(result,"paymentMessages",{}), #new data that could be usefull
+            "kind":     "", #can't find it on the new data returned by airbnb
+            "name":     utils.get_nested_value(result,"demandStayListing.description.name.localizedStringWithTranslationPreference",""),
+            "title":    utils.get_nested_value(result,"title",""),
+            "type":     "",#can't find it on the new data returned by airbnb
+            "long_stay_discount":{},
+            "fee":{
+                "airbnb":{},
+                "cleaning":{},
+            },
+            "price": {
+                "unit":{
+                    "qualifier":  utils.get_nested_value(pr,"primaryLine.qualifier","") 
+                },
+                "total":{},
+                "break_down":[],
+            },
+            "rating":{
+                "value":0,
+                "reviewCount": 0,
+            },
+            "images": [],
+            "badges": [],
+            "coordinates":{
+                "latitude": utils.get_nested_value(result,"demandStayListing.location.coordinate.latitude",0),
+                "longitud": utils.get_nested_value(result,"demandStayListing.location.coordinate.longitude",0),
+            },
+        }
+        for badge in utils.get_nested_value(result,"badges",[]):
+            data["badges"].append(utils.get_nested_value(badge,"loggingContext.badgeType",""))
+
+        avgRatingLocalized = utils.get_nested_value(result,"avgRatingLocalized","")
+        splited = avgRatingLocalized.split(" ")
+        if len(splited)==2:
+            splited[0] = splited[0].replace(",",".")
+            rating = float(splited[0])
+            data["rating"]["value"]=rating
+            reviewCount = regex_number.search(splited[1]).group()
+            data["rating"]["reviewCount"]=reviewCount
+        price_to_use = utils.get_nested_value(pr,"primaryLine.originalPrice","")
+        if price_to_use=="":
+              price_to_use = utils.get_nested_value(pr,"primaryLine.price","")
+
+        if price_to_use!="": 
+            amount, currency = utils.parse_price_symbol(price_to_use)
+            data["price"]["unit"]["curency_symbol"]=currency
+            data["price"]["unit"]["amount"]=amount   
+
+        discountedPrice=utils.get_nested_value(pr,"primaryLine.discountedPrice","")
+        if discountedPrice!="":
+            amount, _ = utils.parse_price_symbol(discountedPrice)
+            data["price"]["unit"]["discount"]=amount
+
+        splited = utils.get_nested_value(pr,"secondaryLine.price","").split(" ")
+        price_to_use=""
+        match len(splited):
+            case 1:
+                if len(splited[0])!=0:
+                    print("price error: ",splited )
+            case 2:
+                price_to_use=splited[0]
+            case 3:
+                splited = splited[:len(splited)-1]
+                price_to_use = "".join(splited)
+            case _:
+                continue
+
+        amount, currency = utils.parse_price_symbol(price_to_use)
+        data["price"]["total"]["currency_symbol"]=currency
+        data["price"]["total"]["amount"]=amount
+        for image_data in utils.get_nested_value(result,"contextualPictures",[]):
+            img={"url": utils.get_nested_value(image_data,"picture","")}
+            data["images"].append(img)   
+        for price_detail in utils.get_nested_value(pr,"explanationData.priceDetails",[]):
+            if "items" not in price_detail:
+                continue
+            for item in utils.get_nested_value(price_detail,"items",[]): 
+                amount, currency = utils.parse_price_symbol(item["priceString"])
+                data["price"]["break_down"].append({"description":item["description"],"amount":amount,"currency":currency})
+                match item["displayComponentType"]:
+                    case "DISCOUNTED_EXPLANATION_LINE_ITEM":
+                        match item["description"]:
+                            case "Long stay discount":
+                                data["long_stay_discount"]["amount"]=amount
+                                data["long_stay_discount"]["currency_symbol"]=currency
+                    case "DEFAULT_EXPLANATION_LINE_ITEM":
+                        match item["description"]:
+                            case "Cleaning fee":
+                                data["fee"]["cleaning"]["amount"]=amount
+                                data["fee"]["cleaning"]["currency_symbol"]=currency
+                            case "Airbnb service fee":
+                                data["fee"]["airbnb"]["amount"]=amount
+                                data["fee"]["airbnb"]["currency_symbol"]=currency
+        datas.append(data)
+
+    return datas
