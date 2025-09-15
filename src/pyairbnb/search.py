@@ -32,8 +32,11 @@ headers_global = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, language: str, proxy_url:str):
-    base_url = "https://www.airbnb.com/api/v3/StaysSearch/9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b"
+def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, language: str, proxy_url:str, hash:str):
+    
+    operationId = hash if hash else '9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b'
+    base_url = f"https://www.airbnb.com/api/v3/StaysSearch/{operationId}"
+
     query_params = {
         "operationName": "StaysSearch",
         "locale": language,
@@ -105,7 +108,7 @@ def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_l
         "extensions":{
             "persistedQuery": {
                 "version": 1,
-                "sha256Hash": "9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b",
+                "sha256Hash": operationId,
             },
         },
         "variables":{

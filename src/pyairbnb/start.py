@@ -101,7 +101,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     return data
 
 def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, currency: str = "USD", language: str = "en", proxy_url: str = ""):
+               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
     """
     Performs a paginated search for all rooms within specified geographic bounds.
 
@@ -128,7 +128,7 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
     while True:
         results_raw = search.get(
             api_key, cursor, check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value, 
-            currency, place_type, price_min, price_max, amenities, free_cancellation, language, proxy_url
+            currency, place_type, price_min, price_max, amenities, free_cancellation, language, proxy_url, hash
         )
         paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
         results = standardize.from_search(results_raw)
@@ -139,7 +139,7 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
     return all_results
 
 def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, currency: str = "USD", language: str = "en", proxy_url: str = ""):
+               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
     """
     Searches the first page of results within specified geographic bounds.
 
@@ -162,8 +162,8 @@ def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: flo
     """
     api_key = api.get(proxy_url)
     results_raw = search.get(
-            api_key, "", check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value, 
-            currency, place_type, price_min, price_max, amenities, free_cancellation, language, proxy_url
+        api_key, "", check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value, 
+        currency, place_type, price_min, price_max, amenities, free_cancellation, language, proxy_url, hash=hash
     )
 
     results = standardize.from_search(results_raw.get("searchResults", []))
@@ -194,7 +194,7 @@ def search_experience_by_taking_the_first_inputs_i_dont_care(user_input_text: st
         result = result + result_tmp
     return result
 
-def search_all_from_url(url: str, currency: str = "USD", language: str = "en", proxy_url: str = ""):
+def search_all_from_url(url: str, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
     """
     Wrapper that parses an Airbnb search URL and delegates to search_all.
     """
@@ -248,5 +248,6 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
         free_cancellation=free_cancellation,
         currency=currency,
         language=language,
-        proxy_url=proxy_url
+        proxy_url=proxy_url,
+        hash=hash
     )
