@@ -46,7 +46,7 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
     homepage.raise_for_status()
 
     bundle_match = re.compile(
-        r"https://a0\.muscache\.com/airbnb/static/packages/web/en/frontend/airmetro/browser/asyncRequire\.[^\"']+\.js"
+        r"https://a0\.muscache\.com/airbnb/static/packages/web/[^/]+/frontend/airmetro/browser/asyncRequire\.[^\"']+\.js"
     ).search(homepage.text)
     if not bundle_match:
         raise RuntimeError("Unable to locate StaysSearch bundle")
