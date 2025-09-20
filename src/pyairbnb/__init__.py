@@ -1,6 +1,7 @@
 from pyairbnb.utils import parse_proxy,get_nested_value
 from pyairbnb.api import get as get_api_key
 from pyairbnb.host import get_listings_from_user
+from pyairbnb.host_details import get_host_details
 from pyairbnb.experience import search_by_place_id as experience_search_by_place_id
 from pyairbnb.search import get_markets,get_places_ids,fetch_stays_search_hash
 from pyairbnb.start import get_calendar,search_all,search_all_from_url,search_first_page,get_reviews,get_details
