@@ -82,8 +82,17 @@ import json
 # Define an Airbnb search URL using only the supported parameters (including free cancellation)
 url = "https://www.airbnb.com/s/Luxembourg--Luxembourg/homes?checkin=2026-02-09&checkout=2026-02-16&ne_lat=49.76537&ne_lng=6.56057&sw_lat=49.31155&sw_lng=6.03263&zoom=10&price_min=154&price_max=700&room_types%5B%5D=Entire%20home%2Fapt&amenities%5B%5D=4&amenities%5B%5D=5&flexible_cancellation=true"
 
+# Fetches the live StaysSearch hash first so
+# the persisted query id matches airbnb website.
+dynamic_hash = pyairbnb.fetch_stays_search_hash()
 # Use the URL wrapper
-results = pyairbnb.search_all_from_url(url, currency="EUR", language ="es", proxy_url="")
+results = pyairbnb.search_all_from_url(
+    url,
+    currency="EUR",
+    language="es",
+    proxy_url="",
+    hash=dynamic_hash, # optional, fallbacks to predefined hash
+)
 
 # Save results and print count
 with open('search_from_url.json', 'w', encoding='utf-8') as f:

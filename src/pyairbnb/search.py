@@ -2,6 +2,7 @@ from datetime import datetime
 from urllib.parse import urlencode
 import pyairbnb.utils as utils
 from curl_cffi import requests
+import re
 
 ep_autocomplete = "https://www.airbnb.com/api/v2/autocompletes-personalized"
 ep_market = "https://www.airbnb.com/api/v2/user_markets"
@@ -32,8 +33,50 @@ headers_global = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, language: str, proxy_url:str):
-    base_url = "https://www.airbnb.com/api/v3/StaysSearch/9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b"
+def fetch_stays_search_hash(proxy_url: str = "") -> str:
+    proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
+    headers = {"User-Agent": headers_global["User-Agent"]}
+
+    homepage = requests.get(
+        "https://www.airbnb.com/",
+        headers=headers,
+        proxies=proxies,
+        impersonate="chrome124",
+    )
+    homepage.raise_for_status()
+
+    bundle_match = re.compile(
+        r"https://a0\.muscache\.com/airbnb/static/packages/web/[^/]+/frontend/airmetro/browser/asyncRequire\.[^\"']+\.js"
+    ).search(homepage.text)
+    if not bundle_match:
+        raise RuntimeError("Unable to locate StaysSearch bundle")
+
+    bundle = requests.get(
+        bundle_match.group(0), headers=headers, proxies=proxies, impersonate="chrome124"
+    )
+    bundle.raise_for_status()
+
+    module_match = re.compile(
+        r"common/frontend/stays-search/routes/StaysSearchRoute/StaysSearchRoute\.prepare\.[^\"']+\.js"
+    ).search(bundle.text)
+    if not module_match:
+        raise RuntimeError("Unable to locate StaysSearchRoute module")
+
+    module_url = f"https://a0.muscache.com/airbnb/static/packages/web/{module_match.group(0)}"
+    module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124")
+    module.raise_for_status()
+
+    hash_match = re.compile(r"operationId:['\"]([0-9a-f]{64})").search(module.text)
+    if not hash_match:
+        raise RuntimeError("Unable to extract StaysSearch operationId")
+
+    return hash_match.group(1)
+
+def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, language: str, proxy_url:str, hash:str):
+    
+    operationId = hash if hash else '9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b'
+    base_url = f"https://www.airbnb.com/api/v3/StaysSearch/{operationId}"
+
     query_params = {
         "operationName": "StaysSearch",
         "locale": language,
@@ -105,13 +148,14 @@ def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_l
         "extensions":{
             "persistedQuery": {
                 "version": 1,
-                "sha256Hash": "9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b",
+                "sha256Hash": operationId,
             },
         },
         "variables":{
             "skipExtendedSearchParams": False,
             "includeMapResults": True,
             "isLeanTreatment": False,
+            "aiSearchEnabled": False, # required for dynamic StaysSearch hash
             "staysMapSearchRequestV2": {
                 "cursor":cursor,
                 "requestedPageType":"STAYS_SEARCH",
