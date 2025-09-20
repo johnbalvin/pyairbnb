@@ -134,6 +134,18 @@ with open('listings.json', 'w', encoding='utf-8') as f:
     f.write(json.dumps(listings))
 ```
 
+### Getting details from user id
+```Python
+import pyairbnb
+import json
+host_id = "656454528"
+language = "en"
+api_key = pyairbnb.get_api_key("")
+listings = pyairbnb.get_host_details(api_key, None, host_id, language, "")
+with open('listings.json', 'w', encoding='utf-8') as f:
+    f.write(json.dumps(listings))
+```
+
 ### Getting experiences by just taking the first autocompletions that you would normally do manually on the website
 ```Python
 import pyairbnb
