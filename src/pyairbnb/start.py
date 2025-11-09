@@ -101,7 +101,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     return data
 
 def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
+               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, adults: int = 0, children: int = 0, infants: int = 0, min_bedrooms: int = 0, min_beds: int = 0, min_bathrooms: int = 0, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
     """
     Performs a paginated search for all rooms within specified geographic bounds.
 
@@ -116,6 +116,12 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
         currency (str): Currency for pricing information.
         amenities (list): List of amenity IDs to filter
         free_cancellation (bool): Filter for listings with free cancellation
+        adults (int): Number of adults
+        children (int): Number of children
+        infants (int): Number of infants
+        min_bedrooms (int): Minimum number of bedrooms
+        min_beds (int): Minimum number of beds
+        min_bathrooms (int): Minimum number of bathrooms
         language (str): language to use for example en,es,tr ..etc
         proxy_url (str): Proxy URL.
 
@@ -127,8 +133,8 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
     cursor = ""
     while True:
         results_raw = search.get(
-            api_key, cursor, check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value, 
-            currency, place_type, price_min, price_max, amenities, free_cancellation, language, proxy_url, hash
+            api_key, cursor, check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value,
+            currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash
         )
         paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
         results = standardize.from_search(results_raw)
@@ -139,7 +145,7 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
     return all_results
 
 def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
+               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, adults: int = 0, children: int = 0, infants: int = 0, min_bedrooms: int = 0, min_beds: int = 0, min_bathrooms: int = 0, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
     """
     Searches the first page of results within specified geographic bounds.
 
@@ -154,6 +160,12 @@ def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: flo
         currency (str): Currency for pricing information.
         amenities (list): List of amenity IDs to filter
         free_cancellation (bool): Filter for listings with free cancellation
+        adults (int): Number of adults
+        children (int): Number of children
+        infants (int): Number of infants
+        min_bedrooms (int): Minimum number of bedrooms
+        min_beds (int): Minimum number of beds
+        min_bathrooms (int): Minimum number of bathrooms
         language (str): language to use for example en,es,tr ..etc
         proxy_url (str): Proxy URL.
 
@@ -162,8 +174,8 @@ def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: flo
     """
     api_key = api.get(proxy_url)
     results_raw = search.get(
-        api_key, "", check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value, 
-        currency, place_type, price_min, price_max, amenities, free_cancellation, language, proxy_url, hash=hash
+        api_key, "", check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value,
+        currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash=hash
     )
 
     results = standardize.from_search(results_raw.get("searchResults", []))
@@ -232,6 +244,16 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
     # Free cancellation filter
     free_cancellation = qs.get("flexible_cancellation", ["false"])[0].lower() == "true"
 
+    # Guest filters
+    adults = int(qs.get("adults", [0])[0])
+    children = int(qs.get("children", [0])[0])
+    infants = int(qs.get("infants", [0])[0])
+
+    # Property filters
+    min_bedrooms = int(qs.get("min_bedrooms", [0])[0])
+    min_beds = int(qs.get("min_beds", [0])[0])
+    min_bathrooms = int(qs.get("min_bathrooms", [0])[0])
+
     # Delegate to existing search_all
     return search_all(
         check_in=check_in,
@@ -246,6 +268,12 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
         place_type=place_type,
         amenities=amenities,
         free_cancellation=free_cancellation,
+        adults=adults,
+        children=children,
+        infants=infants,
+        min_bedrooms=min_bedrooms,
+        min_beds=min_beds,
+        min_bathrooms=min_bathrooms,
         currency=currency,
         language=language,
         proxy_url=proxy_url,

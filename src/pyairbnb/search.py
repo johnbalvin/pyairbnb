@@ -72,7 +72,7 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
 
     return hash_match.group(1)
 
-def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, language: str, proxy_url:str, hash:str):
+def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str):
     
     operationId = hash if hash else '9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b'
     base_url = f"https://www.airbnb.com/api/v3/StaysSearch/{operationId}"
@@ -142,6 +142,29 @@ def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_l
     if free_cancellation is not None and free_cancellation:
         rawParams.append({"filterName":"flexible_cancellation","filterValues": ["true"]})
         rawParams.append({"filterName":"selected_filter_order","filterValues": ["flexible_cancellation:true"]})
+
+    # Add guest filtering if provided
+    if adults is not None and adults > 0:
+        rawParams.append({"filterName":"adults","filterValues": [str(adults)]})
+
+    if children is not None and children > 0:
+        rawParams.append({"filterName":"children","filterValues": [str(children)]})
+
+    if infants is not None and infants > 0:
+        rawParams.append({"filterName":"infants","filterValues": [str(infants)]})
+
+    # Add property filtering if provided
+    if min_bedrooms is not None and min_bedrooms > 0:
+        rawParams.append({"filterName":"min_bedrooms","filterValues": [str(min_bedrooms)]})
+        rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_bedrooms:{min_bedrooms}"]})
+
+    if min_beds is not None and min_beds > 0:
+        rawParams.append({"filterName":"min_beds","filterValues": [str(min_beds)]})
+        rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_beds:{min_beds}"]})
+
+    if min_bathrooms is not None and min_bathrooms > 0:
+        rawParams.append({"filterName":"min_bathrooms","filterValues": [str(min_bathrooms)]})
+        rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_bathrooms:{min_bathrooms}"]})
 
     inputData = {
         "operationName":"StaysSearch",
