@@ -101,13 +101,13 @@ def from_map_search(resultRaw):
             for item in utils.get_nested_value(price_detail,"items",[]): 
                 amount, currency = utils.parse_price_symbol(item["priceString"])
                 data["price"]["break_down"].append({"description":item["description"],"amount":amount,"currency":currency})
-                match item["displayComponentType"]:
-                    case "DISCOUNTED_EXPLANATION_LINE_ITEM":
+                match item["__typename"]:
+                    case "DiscountedExplanationLineItem":
                         match item["description"]:
                             case "Long stay discount":
                                 data["long_stay_discount"]["amount"]=amount
                                 data["long_stay_discount"]["currency_symbol"]=currency
-                    case "DEFAULT_EXPLANATION_LINE_ITEM":
+                    case "DefaultExplanationLineItem":
                         match item["description"]:
                             case "Cleaning fee":
                                 data["fee"]["cleaning"]["amount"]=amount
@@ -358,13 +358,13 @@ def from_search(resultRaw):
             for item in utils.get_nested_value(price_detail,"items",[]): 
                 amount, currency = utils.parse_price_symbol(item["priceString"])
                 data["price"]["break_down"].append({"description":item["description"],"amount":amount,"currency":currency})
-                match item["displayComponentType"]:
-                    case "DISCOUNTED_EXPLANATION_LINE_ITEM":
+                match item["__typename"]:
+                    case "DiscountedExplanationLineItem":
                         match item["description"]:
                             case "Long stay discount":
                                 data["long_stay_discount"]["amount"]=amount
                                 data["long_stay_discount"]["currency_symbol"]=currency
-                    case "DEFAULT_EXPLANATION_LINE_ITEM":
+                    case "DefaultExplanationLineItem":
                         match item["description"]:
                             case "Cleaning fee":
                                 data["fee"]["cleaning"]["amount"]=amount
