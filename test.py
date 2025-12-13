@@ -1,43 +1,24 @@
 import pyairbnb
 import json
-#
-check_in = "2026-05-15"
-check_out = "2026-05-17"
-currency = "EUR"
-user_input_text = "Luxembourg"
-locale = "pt"
-proxy_url = ""  # Proxy URL (if needed)
-zoom_value=2
-api_key = pyairbnb.get_api_key("")
-markets_data = pyairbnb.get_markets(currency,locale,api_key,proxy_url)
-markets = pyairbnb.get_nested_value(markets_data,"user_markets", [])
-if len(markets)==0:
-    raise Exception("markets are empty")
-config_token = pyairbnb.get_nested_value(markets[0],"satori_parameters", "")
-country_code = pyairbnb.get_nested_value(markets[0],"country_code", "")
-if config_token=="" or country_code=="":
-    raise Exception("config_token or country_code are empty")
-place_ids_results = pyairbnb.get_places_ids(country_code, user_input_text, currency, locale, config_token, api_key, proxy_url)
-if len(place_ids_results)==0:
-    raise Exception("empty places ids")
-place_id = pyairbnb.get_nested_value(place_ids_results[0],"location.google_place_id", "")
-location_name = pyairbnb.get_nested_value(place_ids_results[0],"location.location_name", "")
-print("place_id: ",place_id)
-print("location_name: ",location_name)
-bb=place_ids_results[0]["location"]["bounding_box"]
-ne_lat = bb["ne_lat"]
-ne_long = bb["ne_lng"]
-sw_lat = bb["sw_lat"]
-sw_long = bb["sw_lng"]
-price_min = 0
+
+# Define search parameters
+currency = "MXN"  # Currency for the search
+check_in = "2026-01-01"  # Check-in date
+check_out = "2026-01-04"  # Check-out date
+ne_lat = -0.6747456399483214 # North-East latitude
+ne_long = -90.30058677891441  # North-East longitude
+sw_lat = -0.7596840340260731  # South-West latitude
+sw_long = -90.36727562895442  # South-West longitude
+zoom_value = 2  # Zoom level for the map
+price_min = 1000
 price_max = 0
-place_type = ""
-amenities = []
-free_cancellation = False
-currency = currency
-language = "en"
+place_type = "Private room" #or "Entire home/apt" or empty
+amenities = [4, 7]  # Example: Filter for listings with WiFi and Pool or leave empty
+free_cancellation = False  # Filter for listings with free/flexible cancellation
+language = "th"
 proxy_url = ""
 
+# Search listings within specified coordinates and date range using keyword arguments
 search_results = pyairbnb.search_all(
     check_in=check_in,
     check_out=check_out,
@@ -57,31 +38,5 @@ search_results = pyairbnb.search_all(
 )
 
 # Save the search results as a JSON file
-with open('search_results1.json', 'w', encoding='utf-8') as f:
+with open('search_results.json', 'w', encoding='utf-8') as f:
     f.write(json.dumps(search_results))  # Convert results to JSON and write to file
-
-room_url = "https://www.airbnb.com/rooms/51752186"  # Listing URL
-currency = "USD"  # Currency for the listing details
-check_in = "2026-05-15"
-check_out = "2026-05-17"
-# Retrieve listing details without including the price information (no check-in/check-out dates)
-data = pyairbnb.get_details(room_url=room_url, currency=currency,adults=4,check_in=check_in,check_out=check_out)
-
-# Save the retrieved details to a JSON file
-with open('details_data.json', 'w', encoding='utf-8') as f:
-    f.write(json.dumps(data))  # Convert the data to JSON and save it
-
-# Dynamically fetching operationId
-dynamic_hash = pyairbnb.fetch_stays_search_hash()
-# Test search_all_from_url using a sample Airbnb URL with various filters.
-results = pyairbnb.search_all_from_url(
-    "https://www.airbnb.com/s/Luxembourg--Luxembourg/homes?checkin=2026-05-15&checkout=2026-05-16&ne_lat=49.765370668280966&ne_lng=6.560570632398054&sw_lat=49.31155139251553&sw_lng=6.0326271739902495&zoom=10&price_min=22&price_max=200&room_types%5B%5D=Entire%20home%2Fapt&amenities%5B%5D=4&amenities%5B%5D=5&flexible_cancellation=true",
-    currency="USD",
-    proxy_url="",
-    hash=dynamic_hash,
-)
-
-with open('search_results_from_url.json', 'w', encoding='utf-8') as f:
-    f.write(json.dumps(results))  # Convert the data to JSON and save it
-
-print(f"Retrieved {len(results)} listings from URL search.")
