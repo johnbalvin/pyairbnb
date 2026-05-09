@@ -56,21 +56,59 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
     )
     bundle.raise_for_status()
 
+    js_paths = re.findall(
+        r"(?:common|[a-z]{2}(?:-[A-Za-z]{2,4})?)/[^\"'\\\s<>]+?\.js",
+        bundle.text,
+    )
     module_match = re.compile(
-        r"common/frontend/stays-search/routes/StaysSearchRoute/StaysSearchRoute\.prepare\.[^\"']+\.js"
+        r"(?:common|[a-z]{2}(?:-[A-Za-z]{2,4})?)/frontend/stays-search/routes/StaysSearchRoute/StaysSearchRoute\.prepare\.[^\"']+\.js"
     ).search(bundle.text)
     if not module_match:
         raise RuntimeError("Unable to locate StaysSearchRoute module")
 
-    module_url = f"https://a0.muscache.com/airbnb/static/packages/web/{module_match.group(0)}"
-    module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124")
-    module.raise_for_status()
+    module_path = module_match.group(0)
+    candidate_paths = [module_path]
+    if module_path in js_paths:
+        module_index = js_paths.index(module_path)
+        candidate_paths = js_paths[max(0, module_index - 3):module_index + 36]
 
-    hash_match = re.compile(r"operationId:['\"]([0-9a-f]{64})").search(module.text)
-    if not hash_match:
-        raise RuntimeError("Unable to extract StaysSearch operationId")
+    operation_patterns = [
+        re.compile(
+            r"['\"]?(?:name|operationName)['\"]?\s*:\s*['\"]StaysSearch['\"][\s\S]{0,2000}?"
+            r"['\"]?(?:operationId|sha256Hash)['\"]?\s*:\s*['\"]([0-9a-f]{64})['\"]"
+        ),
+        re.compile(
+            r"['\"]?(?:operationId|sha256Hash)['\"]?\s*:\s*['\"]([0-9a-f]{64})['\"][\s\S]{0,2000}?"
+            r"['\"]?(?:name|operationName)['\"]?\s*:\s*['\"]StaysSearch['\"]"
+        ),
+        re.compile(r"/api/v3/StaysSearch/([0-9a-f]{64})"),
+        re.compile(r"StaysSearch/([0-9a-f]{64})"),
+    ]
 
-    return hash_match.group(1)
+    visited_paths = set()
+    for path in candidate_paths:
+        if path in visited_paths:
+            continue
+        visited_paths.add(path)
+
+        module_url = f"https://a0.muscache.com/airbnb/static/packages/web/{path}"
+        module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124")
+        module.raise_for_status()
+
+        for pattern in operation_patterns:
+            hash_match = pattern.search(module.text)
+            if hash_match:
+                return hash_match.group(1)
+
+        if path == module_path:
+            hash_matches = re.findall(
+                r"['\"]?(?:operationId|sha256Hash)['\"]?\s*:\s*['\"]([0-9a-f]{64})['\"]",
+                module.text,
+            )
+            if len(hash_matches) == 1:
+                return hash_matches[0]
+
+    raise RuntimeError("Unable to extract StaysSearch operationId")
 
 def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str):
     
