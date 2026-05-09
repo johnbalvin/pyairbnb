@@ -5,6 +5,7 @@ import pyairbnb.utils as utils
 from urllib.parse import urlencode
 import pyairbnb.api as api
 import pyairbnb.standardize as standardize
+from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
 
 class UnavailableError(Exception):
@@ -16,12 +17,12 @@ BASE_URL = "https://www.airbnb.com/api/v3/StaysPdpSections"
 PERSISTED_QUERY_HASH = "80c7889b4b0027d99ffea830f6c0d4911a6e863a957cbe1044823f0fc746bf1f"
 
 
-def _build_headers(api_key: str | None, proxy_url: str | None) -> dict:
+def _build_headers(api_key: str | None, proxy_url: str | None, timeout: Timeout = DEFAULT_TIMEOUT) -> dict:
     return {
         "Accept": "application/json",
         "Content-Type": "application/json",
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",  # TO-DO randomize this later
-        "X-Airbnb-Api-Key": api_key or api.get(proxy_url),
+        "X-Airbnb-Api-Key": api_key or api.get(proxy_url, timeout=timeout),
     }
 
 
@@ -135,6 +136,7 @@ def get(
     api_key: str | None = None,
     cookies: list | None = None, 
     proxy_url: str | None = None,
+    timeout: Timeout = DEFAULT_TIMEOUT,
 ) -> dict:
     extension = _build_query_extension()
     variables = _build_query_variables(
@@ -153,11 +155,11 @@ def get(
     }
 
     url = f"{BASE_URL}/{PERSISTED_QUERY_HASH}?{urlencode(query)}"
-    headers = _build_headers(api_key, proxy_url)
+    headers = _build_headers(api_key, proxy_url, timeout=timeout)
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     with requests.Session() as session:
         session.cookies.update(cookies)
-        response = session.get(url=url, headers=headers, proxies=proxies)
+        response = session.get(url=url, headers=headers, proxies=proxies, timeout=timeout)
     
     response.raise_for_status()
     data = response.json()

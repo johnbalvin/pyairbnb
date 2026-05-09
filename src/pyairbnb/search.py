@@ -3,6 +3,7 @@ from urllib.parse import urlencode
 import pyairbnb.utils as utils
 from curl_cffi import requests
 import re
+from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
 ep_autocomplete = "https://www.airbnb.com/api/v2/autocompletes-personalized"
 ep_market = "https://www.airbnb.com/api/v2/user_markets"
@@ -33,7 +34,7 @@ headers_global = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
 
-def fetch_stays_search_hash(proxy_url: str = "") -> str:
+def fetch_stays_search_hash(proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT) -> str:
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     headers = {"User-Agent": headers_global["User-Agent"]}
 
@@ -42,6 +43,7 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
         headers=headers,
         proxies=proxies,
         impersonate="chrome124",
+        timeout=timeout,
     )
     homepage.raise_for_status()
 
@@ -52,7 +54,7 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
         raise RuntimeError("Unable to locate StaysSearch bundle")
 
     bundle = requests.get(
-        bundle_match.group(0), headers=headers, proxies=proxies, impersonate="chrome124"
+        bundle_match.group(0), headers=headers, proxies=proxies, impersonate="chrome124", timeout=timeout
     )
     bundle.raise_for_status()
 
@@ -63,7 +65,7 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
         raise RuntimeError("Unable to locate StaysSearchRoute module")
 
     module_url = f"https://a0.muscache.com/airbnb/static/packages/web/{module_match.group(0)}"
-    module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124")
+    module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124", timeout=timeout)
     module.raise_for_status()
 
     hash_match = re.compile(r"operationId:['\"]([0-9a-f]{64})").search(module.text)
@@ -72,7 +74,7 @@ def fetch_stays_search_hash(proxy_url: str = "") -> str:
 
     return hash_match.group(1)
 
-def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str):
+def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str, timeout: Timeout = DEFAULT_TIMEOUT):
     
     operationId = hash if hash else '9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b'
     base_url = f"https://www.airbnb.com/api/v3/StaysSearch/{operationId}"
@@ -205,13 +207,13 @@ def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_l
     proxies = {}
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
-    response = requests.post(url_parsed, json = inputData, headers=headers_copy, proxies=proxies,  impersonate="chrome124")
+    response = requests.post(url_parsed, json = inputData, headers=headers_copy, proxies=proxies,  impersonate="chrome124", timeout=timeout)
     if response.status_code != 200:
         raise Exception("Not corret status code: ", response.status_code, " response body: ",response.text)
     data = response.json()
     return data
 
-def get_markets(currency: str, locale: str, api_key: str, proxy_url: str):
+def get_markets(currency: str, locale: str, api_key: str, proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT):
     query_params = {
         "locale": locale,
         "currency": currency,
@@ -223,13 +225,13 @@ def get_markets(currency: str, locale: str, api_key: str, proxy_url: str):
     proxies = {}
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
-    response = requests.get(url_parsed, headers=headers_copy, proxies=proxies, impersonate="chrome124")
+    response = requests.get(url_parsed, headers=headers_copy, proxies=proxies, impersonate="chrome124", timeout=timeout)
     if response.status_code != 200:
         raise Exception("Not corret status code: ", response.status_code, " response body: ",response.text)
     data = response.json()
     return data
 
-def get_places_ids(country: str, location_name: str, currency: str, locale: str, config_token: str, api_key: str, proxy_url: str):
+def get_places_ids(country: str, location_name: str, currency: str, locale: str, config_token: str, api_key: str, proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT):
     query_params = {
         "currency": currency,
         "country": country,
@@ -250,7 +252,7 @@ def get_places_ids(country: str, location_name: str, currency: str, locale: str,
     proxies = {}
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
-    response = requests.get(url_parsed, headers=headers_copy, proxies=proxies, impersonate="chrome124")
+    response = requests.get(url_parsed, headers=headers_copy, proxies=proxies, impersonate="chrome124", timeout=timeout)
     if response.status_code != 200:
         raise Exception("Not corret status code: ", response.status_code, " response body: ",response.text)
     data = response.json()

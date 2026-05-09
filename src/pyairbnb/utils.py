@@ -1,6 +1,10 @@
 import re
+from typing import TypeAlias
 from urllib.parse import quote
 
+
+Timeout: TypeAlias = int | float | tuple[int | float, int | float] | None
+DEFAULT_TIMEOUT: Timeout = 60
 
 regex_space = re.compile(r'[\s ]+')
 regx_price = re.compile(r'\d+')

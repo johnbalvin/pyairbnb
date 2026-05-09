@@ -1,11 +1,12 @@
 from curl_cffi import requests
 import re
+from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
 ep = "https://www.airbnb.com"
 
 regx_api_key = re.compile(r'"api_config":{"key":".+?"')
 
-def get(proxy_url: str) -> str:
+def get(proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT) -> str:
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": "en",
@@ -25,7 +26,7 @@ def get(proxy_url: str) -> str:
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
 
-    response = requests.get(ep, headers=headers, proxies=proxies, timeout=60)  
+    response = requests.get(ep, headers=headers, proxies=proxies, timeout=timeout)
     response.raise_for_status() 
 
     body = response.text
