@@ -208,74 +208,37 @@ def search_experience_by_taking_the_first_inputs_i_dont_care(user_input_text: st
 
 def search_all_from_url(url: str, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = ""):
     """
-    Wrapper that parses an Airbnb search URL and delegates to search_all.
+    Parses an Airbnb search URL and forwards all recognizable filters to
+    Airbnb's StaysSearch API. The URL is the source of truth: any URL
+    parameter (known or unknown) is passed through.
     """
-    from urllib.parse import urlparse, parse_qs
-    parsed = urlparse(url)
-    qs = parse_qs(parsed.query)
-
-    # Extract required parameters
-    check_in = qs.get("checkin", [None])[0]
-    check_out = qs.get("checkout", [None])[0]
-    ne_lat = float(qs.get("ne_lat", [0])[0])
-    ne_long = float(qs.get("ne_lng", [0])[0])
-    sw_lat = float(qs.get("sw_lat", [0])[0])
-    sw_long = float(qs.get("sw_lng", [0])[0])
-
-    # Determine zoom value
-    zoom_str = qs.get("zoom_level", qs.get("zoom", [0]))[0]
-    zoom_value = int(float(zoom_str))
-
-    # Price filters
-    price_min = int(qs.get("price_min", [0])[0])
-    price_max = int(qs.get("price_max", [0])[0])
-
-    # Place type filter
-    place_type = qs.get("room_types[]", [None])[0]
-
-    # Amenities list
-    amenities = []
-    for a in qs.get("amenities[]", []):
-        try:
-            amenities.append(int(a))
-        except ValueError:
-            continue
-
-    # Free cancellation filter
-    free_cancellation = qs.get("flexible_cancellation", ["false"])[0].lower() == "true"
-
-    # Guest filters
-    adults = int(qs.get("adults", [0])[0])
-    children = int(qs.get("children", [0])[0])
-    infants = int(qs.get("infants", [0])[0])
-
-    # Property filters
-    min_bedrooms = int(qs.get("min_bedrooms", [0])[0])
-    min_beds = int(qs.get("min_beds", [0])[0])
-    min_bathrooms = int(qs.get("min_bathrooms", [0])[0])
-
-    # Delegate to existing search_all
-    return search_all(
-        check_in=check_in,
-        check_out=check_out,
-        ne_lat=ne_lat,
-        ne_long=ne_long,
-        sw_lat=sw_lat,
-        sw_long=sw_long,
-        zoom_value=zoom_value,
-        price_min=price_min,
-        price_max=price_max,
-        place_type=place_type,
-        amenities=amenities,
-        free_cancellation=free_cancellation,
-        adults=adults,
-        children=children,
-        infants=infants,
-        min_bedrooms=min_bedrooms,
-        min_beds=min_beds,
-        min_bathrooms=min_bathrooms,
-        currency=currency,
-        language=language,
-        proxy_url=proxy_url,
-        hash=hash
-    )
+    raw_params = search.url_to_raw_params(url)
+    api_key = api.get(proxy_url)
+    all_results = []
+    cursor = ""
+    # search.get's structured-args are ignored when raw_params is supplied,
+    # but they're still required by the signature. Pass them by name so this
+    # call doesn't break if their positional order ever changes.
+    call_kwargs = {
+        "currency": currency, "language": language,
+        "proxy_url": proxy_url, "hash": hash,
+        "raw_params": raw_params,
+        "check_in": None, "check_out": None,
+        "ne_lat": 0, "ne_long": 0, "sw_lat": 0, "sw_long": 0,
+        "zoom_value": 0, "place_type": "",
+        "price_min": 0, "price_max": 0, "amenities": [],
+        "free_cancellation": False,
+        "adults": 0, "children": 0, "infants": 0,
+        "min_bedrooms": 0, "min_beds": 0, "min_bathrooms": 0,
+    }
+    while True:
+        results_raw = search.get(api_key=api_key, cursor=cursor, **call_kwargs)
+        paginationInfo = utils.get_nested_value(
+            results_raw, "data.presentation.staysSearch.results.paginationInfo", {}
+        )
+        results = standardize.from_search(results_raw)
+        all_results.extend(results)
+        if not results or not paginationInfo.get("nextPageCursor"):
+            break
+        cursor = paginationInfo["nextPageCursor"]
+    return all_results
