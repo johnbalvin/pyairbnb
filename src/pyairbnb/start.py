@@ -178,7 +178,7 @@ def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: flo
         currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash=hash
     )
 
-    results = standardize.from_search(results_raw.get("searchResults", []))
+    results = standardize.from_search(results_raw)
     return results
 
 
