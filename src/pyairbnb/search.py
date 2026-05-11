@@ -1,5 +1,5 @@
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse, parse_qs
 import pyairbnb.utils as utils
 from curl_cffi import requests
 import re
@@ -7,6 +7,39 @@ from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
 ep_autocomplete = "https://www.airbnb.com/api/v2/autocompletes-personalized"
 ep_market = "https://www.airbnb.com/api/v2/user_markets"
+
+# Filters Airbnb's API expects in snake_case. Everything else: snake → camel.
+_SNAKE_FILTERS = {"amenities", "room_types", "selected_filter_order", "flexible_cancellation",
+          "price_min", "price_max", "min_bedrooms", "min_beds", "min_bathrooms"}
+
+_UI_DEFAULTS = {"cdnCacheSafe": "false", "channel": "EXPLORE", "datePickerType": "calendar",
+                "itemsPerGrid": "50", "priceFilterInputType": "0", "screenSize": "large",
+                "searchByMap": "true", "version": "1.8.3"}
+
+
+def _filter_name(url_key):
+    if url_key == "zoom": url_key = "zoom_level"
+    if url_key in _SNAKE_FILTERS or "_" not in url_key: return url_key
+    head, *tail = url_key.split("_")
+    return head + "".join(word.capitalize() for word in tail)
+
+
+def url_to_raw_params(url):
+    query_params = parse_qs(urlparse(url).query)
+    raw_params = [{"filterName": _filter_name(key[:-2] if key.endswith("[]") else key),
+                   "filterValues": [str(value) for value in values]} for key, values in query_params.items()]
+    seen_names = {param["filterName"] for param in raw_params}
+
+    checkin = query_params.get("checkin", [None])[0]
+    checkout = query_params.get("checkout", [None])[0]
+    if checkin and checkout and "priceFilterNumNights" not in seen_names:
+        days = (datetime.strptime(checkout, "%Y-%m-%d") - datetime.strptime(checkin, "%Y-%m-%d")).days
+        raw_params.append({"filterName": "priceFilterNumNights", "filterValues": [str(days)]})
+        seen_names.add("priceFilterNumNights")
+
+    raw_params += [{"filterName": name, "filterValues": [value]}
+                   for name, value in _UI_DEFAULTS.items() if name not in seen_names]
+    return raw_params
 
 treament = [
 	"feed_map_decouple_m11_treatment",
@@ -58,24 +91,62 @@ def fetch_stays_search_hash(proxy_url: str = "", timeout: Timeout = DEFAULT_TIME
     )
     bundle.raise_for_status()
 
+    js_paths = re.findall(
+        r"(?:common|[a-z]{2}(?:-[A-Za-z]{2,4})?)/[^\"'\\\s<>]+?\.js",
+        bundle.text,
+    )
     module_match = re.compile(
-        r"common/frontend/stays-search/routes/StaysSearchRoute/StaysSearchRoute\.prepare\.[^\"']+\.js"
+        r"(?:common|[a-z]{2}(?:-[A-Za-z]{2,4})?)/frontend/stays-search/routes/StaysSearchRoute/StaysSearchRoute\.prepare\.[^\"']+\.js"
     ).search(bundle.text)
     if not module_match:
         raise RuntimeError("Unable to locate StaysSearchRoute module")
 
-    module_url = f"https://a0.muscache.com/airbnb/static/packages/web/{module_match.group(0)}"
-    module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124", timeout=timeout)
-    module.raise_for_status()
+    module_path = module_match.group(0)
+    candidate_paths = [module_path]
+    if module_path in js_paths:
+        module_index = js_paths.index(module_path)
+        candidate_paths = js_paths[max(0, module_index - 3):module_index + 36]
 
-    hash_match = re.compile(r"operationId:['\"]([0-9a-f]{64})").search(module.text)
-    if not hash_match:
-        raise RuntimeError("Unable to extract StaysSearch operationId")
+    operation_patterns = [
+        re.compile(
+            r"['\"]?(?:name|operationName)['\"]?\s*:\s*['\"]StaysSearch['\"][\s\S]{0,2000}?"
+            r"['\"]?(?:operationId|sha256Hash)['\"]?\s*:\s*['\"]([0-9a-f]{64})['\"]"
+        ),
+        re.compile(
+            r"['\"]?(?:operationId|sha256Hash)['\"]?\s*:\s*['\"]([0-9a-f]{64})['\"][\s\S]{0,2000}?"
+            r"['\"]?(?:name|operationName)['\"]?\s*:\s*['\"]StaysSearch['\"]"
+        ),
+        re.compile(r"/api/v3/StaysSearch/([0-9a-f]{64})"),
+        re.compile(r"StaysSearch/([0-9a-f]{64})"),
+    ]
 
-    return hash_match.group(1)
+    visited_paths = set()
+    for path in candidate_paths:
+        if path in visited_paths:
+            continue
+        visited_paths.add(path)
 
-def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str, timeout: Timeout = DEFAULT_TIMEOUT):
-    
+        module_url = f"https://a0.muscache.com/airbnb/static/packages/web/{path}"
+        module = requests.get(module_url, headers=headers, proxies=proxies, impersonate="chrome124", timeout=timeout)
+        module.raise_for_status()
+
+        for pattern in operation_patterns:
+            hash_match = pattern.search(module.text)
+            if hash_match:
+                return hash_match.group(1)
+
+        if path == module_path:
+            hash_matches = re.findall(
+                r"['\"]?(?:operationId|sha256Hash)['\"]?\s*:\s*['\"]([0-9a-f]{64})['\"]",
+                module.text,
+            )
+            if len(hash_matches) == 1:
+                return hash_matches[0]
+
+    raise RuntimeError("Unable to extract StaysSearch operationId")
+
+def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str, raw_params: list = None, timeout: Timeout = DEFAULT_TIMEOUT):
+
     operationId = hash if hash else '9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b'
     base_url = f"https://www.airbnb.com/api/v3/StaysSearch/{operationId}"
 
@@ -85,88 +156,92 @@ def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_l
         "currency": currency,
     }
     url_parsed = f"{base_url}?{urlencode(query_params)}"
-    rawParams=[
-        {"filterName":"cdnCacheSafe","filterValues":["false"]},
-        {"filterName":"channel","filterValues":["EXPLORE"]},
-        {"filterName":"datePickerType","filterValues":["calendar"]},
-        {"filterName":"flexibleTripLengths","filterValues":["one_week"]},
-        {"filterName":"itemsPerGrid","filterValues":["50"]},#if you read this, this is items returned number, this can bex exploited  ;)
-        {"filterName":"monthlyLength","filterValues":["3"]},
+
+    if raw_params is not None:
+        rawParams = raw_params
+    else:
+        rawParams=[
+            {"filterName":"cdnCacheSafe","filterValues":["false"]},
+            {"filterName":"channel","filterValues":["EXPLORE"]},
+            {"filterName":"datePickerType","filterValues":["calendar"]},
+            {"filterName":"flexibleTripLengths","filterValues":["one_week"]},
+            {"filterName":"itemsPerGrid","filterValues":["50"]},#if you read this, this is items returned number, this can bex exploited  ;)
+            {"filterName":"monthlyLength","filterValues":["3"]},
         {"filterName":"monthlyStartDate","filterValues":["2024-02-01"]},
-        {"filterName":"neLat","filterValues":[str(ne_lat)]},
-        {"filterName":"neLng","filterValues":[str(ne_long)]},
+            {"filterName":"neLat","filterValues":[str(ne_lat)]},
+            {"filterName":"neLng","filterValues":[str(ne_long)]},
         {"filterName":"placeId","filterValues":["ChIJpTeBx6wjq5oROJeXkPCSSSo"]},
-        {"filterName":"priceFilterInputType","filterValues":["0"]},
+            {"filterName":"priceFilterInputType","filterValues":["0"]},
         {"filterName":"query","filterValues":["Galapagos Island, Ecuador"]},
-        {"filterName":"screenSize","filterValues":["large"]},
-        {"filterName":"refinementPaths","filterValues":["/homes"]},
-        {"filterName":"searchByMap","filterValues":["true"]},
-        {"filterName":"swLat","filterValues":[str(sw_lat)]},
-        {"filterName":"swLng","filterValues":[str(sw_long)]},
-        {"filterName":"tabId","filterValues":["home_tab"]},
-        {"filterName":"version","filterValues":["1.8.3"]},
-        {"filterName":"zoomLevel","filterValues":[str(zoom_value)]},
-    ]
+            {"filterName":"screenSize","filterValues":["large"]},
+            {"filterName":"refinementPaths","filterValues":["/homes"]},
+            {"filterName":"searchByMap","filterValues":["true"]},
+            {"filterName":"swLat","filterValues":[str(sw_lat)]},
+            {"filterName":"swLng","filterValues":[str(sw_long)]},
+            {"filterName":"tabId","filterValues":["home_tab"]},
+            {"filterName":"version","filterValues":["1.8.3"]},
+            {"filterName":"zoomLevel","filterValues":[str(zoom_value)]},
+        ]
 
-    if check_in is not None and len(check_in) > 0 and check_out is not None and len(check_out) > 0:
-        check_in_date = datetime.strptime(check_in, "%Y-%m-%d")
-        check_out_date = datetime.strptime(check_out, "%Y-%m-%d")
+        if check_in is not None and len(check_in) > 0 and check_out is not None and len(check_out) > 0:
+            check_in_date = datetime.strptime(check_in, "%Y-%m-%d")
+            check_out_date = datetime.strptime(check_out, "%Y-%m-%d")
 
-        difference = check_out_date - check_in_date
-        days = difference.days
-        rawParams.extend([
-            {"filterName":"checkin","filterValues":[check_in]},
-            {"filterName":"checkout","filterValues":[check_out]},
-            {"filterName":"priceFilterNumNights","filterValues":[str(days)]},
-        ])
+            difference = check_out_date - check_in_date
+            days = difference.days
+            rawParams.extend([
+                {"filterName":"checkin","filterValues":[check_in]},
+                {"filterName":"checkout","filterValues":[check_out]},
+                {"filterName":"priceFilterNumNights","filterValues":[str(days)]},
+            ])
 
-    if place_type is not None and place_type in ("Private room","Entire home/apt"):
-        rawParams.append({"filterName":"room_types","filterValues": [place_type]})
-        rawParams.append({"filterName":"selected_filter_order","filterValues": ["room_types:"+place_type]})
+        if place_type is not None and place_type in ("Private room","Entire home/apt"):
+            rawParams.append({"filterName":"room_types","filterValues": [place_type]})
+            rawParams.append({"filterName":"selected_filter_order","filterValues": ["room_types:"+place_type]})
 
-    if price_min is not None and price_min > 0:
-        rawParams.append({"filterName":"price_min","filterValues": [str(price_min)]})
+        if price_min is not None and price_min > 0:
+            rawParams.append({"filterName":"price_min","filterValues": [str(price_min)]})
 
-    if price_max is not None and price_max > 0:
-        rawParams.append({"filterName":"price_max","filterValues": [str(price_max)]})
-        
-    # Add amenities filtering if provided
-    if amenities is not None and len(amenities) > 0:
-        # Add each amenity as a separate filter
-        amenity_str_values = [str(amenity_id) for amenity_id in amenities]
-        rawParams.append({"filterName":"amenities","filterValues": amenity_str_values})
-        
-        # Add selected filter order for each amenity
-        for amenity_id in amenities:
-            rawParams.append({"filterName":"selected_filter_order","filterValues": [f"amenities:{amenity_id}"]})
+        if price_max is not None and price_max > 0:
+            rawParams.append({"filterName":"price_max","filterValues": [str(price_max)]})
 
-    # Add free cancellation filtering if provided
-    if free_cancellation is not None and free_cancellation:
-        rawParams.append({"filterName":"flexible_cancellation","filterValues": ["true"]})
-        rawParams.append({"filterName":"selected_filter_order","filterValues": ["flexible_cancellation:true"]})
+        # Add amenities filtering if provided
+        if amenities is not None and len(amenities) > 0:
+            # Add each amenity as a separate filter
+            amenity_str_values = [str(amenity_id) for amenity_id in amenities]
+            rawParams.append({"filterName":"amenities","filterValues": amenity_str_values})
 
-    # Add guest filtering if provided
-    if adults is not None and adults > 0:
-        rawParams.append({"filterName":"adults","filterValues": [str(adults)]})
+            # Add selected filter order for each amenity
+            for amenity_id in amenities:
+                rawParams.append({"filterName":"selected_filter_order","filterValues": [f"amenities:{amenity_id}"]})
 
-    if children is not None and children > 0:
-        rawParams.append({"filterName":"children","filterValues": [str(children)]})
+        # Add free cancellation filtering if provided
+        if free_cancellation is not None and free_cancellation:
+            rawParams.append({"filterName":"flexible_cancellation","filterValues": ["true"]})
+            rawParams.append({"filterName":"selected_filter_order","filterValues": ["flexible_cancellation:true"]})
 
-    if infants is not None and infants > 0:
-        rawParams.append({"filterName":"infants","filterValues": [str(infants)]})
+        # Add guest filtering if provided
+        if adults is not None and adults > 0:
+            rawParams.append({"filterName":"adults","filterValues": [str(adults)]})
 
-    # Add property filtering if provided
-    if min_bedrooms is not None and min_bedrooms > 0:
-        rawParams.append({"filterName":"min_bedrooms","filterValues": [str(min_bedrooms)]})
-        rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_bedrooms:{min_bedrooms}"]})
+        if children is not None and children > 0:
+            rawParams.append({"filterName":"children","filterValues": [str(children)]})
 
-    if min_beds is not None and min_beds > 0:
-        rawParams.append({"filterName":"min_beds","filterValues": [str(min_beds)]})
-        rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_beds:{min_beds}"]})
+        if infants is not None and infants > 0:
+            rawParams.append({"filterName":"infants","filterValues": [str(infants)]})
 
-    if min_bathrooms is not None and min_bathrooms > 0:
-        rawParams.append({"filterName":"min_bathrooms","filterValues": [str(min_bathrooms)]})
-        rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_bathrooms:{min_bathrooms}"]})
+        # Add property filtering if provided
+        if min_bedrooms is not None and min_bedrooms > 0:
+            rawParams.append({"filterName":"min_bedrooms","filterValues": [str(min_bedrooms)]})
+            rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_bedrooms:{min_bedrooms}"]})
+
+        if min_beds is not None and min_beds > 0:
+            rawParams.append({"filterName":"min_beds","filterValues": [str(min_beds)]})
+            rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_beds:{min_beds}"]})
+
+        if min_bathrooms is not None and min_bathrooms > 0:
+            rawParams.append({"filterName":"min_bathrooms","filterValues": [str(min_bathrooms)]})
+            rawParams.append({"filterName":"selected_filter_order","filterValues": [f"min_bathrooms:{min_bathrooms}"]})
 
     inputData = {
         "operationName":"StaysSearch",
