@@ -89,8 +89,16 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     # Get price data if check-in and check-out dates are provided
     if check_in and check_out:
         price_data = price.get(
-            api_key, cookies, price_input["impression_id"], product_id, check_in, check_out, adults, 
-            currency, language, proxy_url
+            room_id=str(room_id),
+            check_in=check_in,
+            check_out=check_out,
+            adults=adults,
+            currency=currency,
+            language=language,
+            impresion_id=price_input["impression_id"],
+            api_key=api_key,
+            cookies=cookies,
+            proxy_url=proxy_url,
         )
         data["price"] = price_data
     
