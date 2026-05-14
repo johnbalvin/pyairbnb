@@ -236,7 +236,7 @@ def from_details(meta):
             case "PdpDescriptionSection":
                 data["description"]=  utils.get_nested_value(section,"section.htmlDescription.htmlText","")
             case "AmenitiesSection":  
-                for amenityGroupRaw in utils.get_nested_value(section,"section.seeAllAmenitiesGroups",[]):
+                for amenityGroupRaw in utils.get_nested_value(meta,"data.node.pdpPresentation.amenities.seeAllAmenitiesGroups",[]):
                     amenityGroup={
                         "title": amenityGroupRaw.get("title",""),
                         "values": [],
@@ -244,7 +244,7 @@ def from_details(meta):
                     for amenityRaw in amenityGroupRaw.get("amenities",[]):
                         amenity = {
                             "title":     amenityRaw.get("title",""),
-                            "subtitle":  amenityRaw.get("subtitle",""),
+                            "subtitle":  utils.get_nested_value(amenityRaw,"subtitle.text",""),
                             "icon":      amenityRaw.get("icon",""),
                             "available": amenityRaw.get("available",""),
                         }
