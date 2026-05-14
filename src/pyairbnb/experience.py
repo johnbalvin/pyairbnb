@@ -2,6 +2,7 @@ from curl_cffi import requests
 from urllib.parse import urlencode
 import pyairbnb.utils as utils
 import uuid
+from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
 ep_search = "https://www.airbnb.com/api/v3/ExperiencesSearch/fbbf9989cdf264a11fce48073008bb557f7f6b43961ccda5df6a8d988bd6ef36"
 headers = {
@@ -21,7 +22,7 @@ headers = {
     "Upgrade-Insecure-Requests": "1",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 }
-def search_by_place_id(cursor: str, place_id: str, location_name: str, currency:str, locale: str, check_in:str, check_out:str, api_key:str, proxy_url:str):
+def search_by_place_id(cursor: str, place_id: str, location_name: str, currency:str, locale: str, check_in:str, check_out:str, api_key:str, proxy_url:str, timeout: Timeout = DEFAULT_TIMEOUT):
     query_params = {
         "operationName": "ExperiencesSearch",
         "locale": locale,
@@ -81,7 +82,7 @@ def search_by_place_id(cursor: str, place_id: str, location_name: str, currency:
     proxies = {}
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
-    response = requests.post(url_parsed, json = inputData, headers=headers_copy, proxies=proxies,  impersonate="chrome124")
+    response = requests.post(url_parsed, json = inputData, headers=headers_copy, proxies=proxies,  impersonate="chrome124", timeout=timeout)
     if response.status_code != 200:
         raise Exception("Not corret status code: ", response.status_code, " response body: ",response.text)
     data = response.json()

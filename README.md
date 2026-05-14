@@ -17,6 +17,7 @@ to match the name with pip name
 ## Important
 - With the new airbnb changes, if you want to get the price from a room url you need to specify the date range
 the date range should be on the format year-month-day, if you leave the date range empty, you will get the details but not the price
+- All HTTP-facing functions accept a `timeout` argument. It defaults to 60 seconds, accepts the same values as `curl_cffi` (`int`, `float`, `(connect_timeout, read_timeout)` tuple), and can be set to `None` to disable timeouts.
 
 
 ### Install
@@ -65,7 +66,8 @@ search_results = pyairbnb.search_all(
     free_cancellation=free_cancellation,
     currency=currency,
     language=language,
-    proxy_url=proxy_url
+    proxy_url=proxy_url,
+    timeout=30,
 )
 
 # Save the search results as a JSON file
@@ -112,6 +114,7 @@ data = pyairbnb.get_price(
     room_id="1316896675409654026",
     check_in=date(2026, 2, 4),
     check_out=date(2026, 2, 7),
+    timeout=30,
 )
 ```
 

@@ -1,8 +1,9 @@
 from curl_cffi import requests
 import json
 import base64
+from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 
-def get(api_key: str, cookies, host_id: str, language: str, proxy_url: str):
+def get(api_key: str, cookies, host_id: str, language: str, proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT):
     # Encode the host ID to match Airbnb's required format
     host_id = 'User:' + host_id
     user_id = base64.b64encode(host_id.encode()).decode('utf-8')
@@ -43,7 +44,8 @@ def get(api_key: str, cookies, host_id: str, language: str, proxy_url: str):
         params=params,
         headers=headers,
         cookies=cookies,
-        proxies=proxies
+        proxies=proxies,
+        timeout=timeout,
     )
 
     # Raise an exception if the request failed
