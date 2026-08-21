@@ -250,6 +250,21 @@ def from_details(meta):
                         }
                         amenityGroup["values"].append(amenity)
                     data["amenities"].append(amenityGroup)
+
+    # The description is no longer inside PdpDescriptionSection. Airbnb still ships that
+    # section, but empty, so the read above finds it, finds no htmlDescription, and yields ""
+    # — which reads as "this listing has no description" rather than as a parser that has
+    # fallen behind. Checked over five Gothenburg listings: empty every time from the section,
+    # 494-587 characters every time from here.
+    #
+    # longDescriptionHtml is the whole text; shortDescriptionHtml is the trimmed one shown
+    # before "show more". Either beats nothing.
+    if not data["description"]:
+        descriptions = utils.get_nested_value(meta,"data.node.pdpPresentation.descriptions",{})
+        data["description"] = (
+            utils.get_nested_value(descriptions,"longDescriptionHtml.localizedString","")
+            or utils.get_nested_value(descriptions,"shortDescriptionHtml.content.localizedString","")
+        )
     return data
 
 def decode_listing_id(base64_id: str) -> int:
