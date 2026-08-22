@@ -17,6 +17,19 @@ from pyairbnb.start import (
 )
 from pyairbnb.details import get as get_metadata_from_url
 from pyairbnb.price import get as get_price
+from pyairbnb.calendar_contract import (
+    CalendarContractError,
+    CalendarContractIssue,
+    CalendarContractWarning,
+    CalendarExtractionError,
+)
+from pyairbnb.models import (
+    CalendarConditionRange,
+    CalendarConditions,
+    CalendarDay,
+    CalendarDayPrice,
+    CalendarMonth,
+)
 
 
 __all__ = [
@@ -38,4 +51,13 @@ __all__ = [
     "experience_search",
     "get_metadata_from_url",
     "get_price",
+    "CalendarConditionRange",
+    "CalendarConditions",
+    "CalendarContractError",
+    "CalendarContractIssue",
+    "CalendarContractWarning",
+    "CalendarDay",
+    "CalendarDayPrice",
+    "CalendarExtractionError",
+    "CalendarMonth",
 ]

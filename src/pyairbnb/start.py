@@ -7,12 +7,77 @@ import pyairbnb.utils as utils
 import pyairbnb.standardize as standardize
 import pyairbnb.experience as experience
 import pyairbnb.calendarinfo as calendar
+from pyairbnb.calendar_contract import (
+    CalendarContractError,
+    CalendarContractWarning,
+)
+from pyairbnb.models import CalendarMonth
+from pyairbnb.parsers.calendar import parse_calendar
 import pyairbnb.host_details as host_details
 from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 from datetime import datetime
+from typing import Literal, overload
 from urllib.parse import urlparse
+import warnings
 
-def get_calendar(api_key: str = "", room_id: str = "", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
+
+@overload
+def get_calendar(
+    api_key: str = "",
+    room_id: str = "",
+    proxy_url: str = "",
+    timeout: Timeout = DEFAULT_TIMEOUT,
+    *,
+    return_dataclass: Literal[False],
+    on_dataclass_error: Literal["raise", "warn_return_dict"] = "warn_return_dict",
+) -> list[dict[str, object]]: ...
+
+
+@overload
+def get_calendar(
+    api_key: str = "",
+    room_id: str = "",
+    proxy_url: str = "",
+    timeout: Timeout = DEFAULT_TIMEOUT,
+    *,
+    return_dataclass: Literal[True] = True,
+    on_dataclass_error: Literal["raise"],
+) -> list[CalendarMonth]: ...
+
+
+@overload
+def get_calendar(
+    api_key: str = "",
+    room_id: str = "",
+    proxy_url: str = "",
+    timeout: Timeout = DEFAULT_TIMEOUT,
+    *,
+    return_dataclass: Literal[True] = True,
+    on_dataclass_error: Literal["warn_return_dict"] = "warn_return_dict",
+) -> list[CalendarMonth] | list[dict[str, object]]: ...
+
+
+@overload
+def get_calendar(
+    api_key: str = "",
+    room_id: str = "",
+    proxy_url: str = "",
+    timeout: Timeout = DEFAULT_TIMEOUT,
+    *,
+    return_dataclass: bool = True,
+    on_dataclass_error: Literal["raise", "warn_return_dict"] = "warn_return_dict",
+) -> list[CalendarMonth] | list[dict[str, object]]: ...
+
+
+def get_calendar(
+    api_key: str = "",
+    room_id: str = "",
+    proxy_url: str = "",
+    timeout: Timeout = DEFAULT_TIMEOUT,
+    *,
+    return_dataclass: bool = True,
+    on_dataclass_error: Literal["raise", "warn_return_dict"] = "warn_return_dict",
+) -> list[CalendarMonth] | list[dict[str, object]]:
     """
     Retrieves the calendar data for a specified room.
 
@@ -20,16 +85,44 @@ def get_calendar(api_key: str = "", room_id: str = "", proxy_url: str = "", time
         room_id (str): The room ID.
         api_key (str): The API key.
         proxy_url (str): The proxy URL.
+        return_dataclass (bool): Return validated dataclasses when possible.
+        on_dataclass_error (str): Raise on contract mismatches or warn and
+            return the original dictionaries.
 
     Returns:
-        dict: Calendar data.
+        list: Calendar months as dataclasses or raw dictionaries.
     """
+    if type(return_dataclass) is not bool:
+        raise TypeError("return_dataclass must be True or False")
+    if on_dataclass_error not in ("raise", "warn_return_dict"):
+        raise ValueError(
+            'on_dataclass_error must be "raise" or "warn_return_dict"'
+        )
+
     if not api_key:
         api_key = api.get(proxy_url, timeout=timeout)
 
     current_month = datetime.now().month
     current_year = datetime.now().year
-    return calendar.get(api_key, room_id, current_month, current_year, proxy_url, timeout=timeout)
+    raw_calendar = calendar.get(
+        api_key,
+        room_id,
+        current_month,
+        current_year,
+        proxy_url,
+        timeout=timeout,
+        require_calendar_path=return_dataclass,
+    )
+    if not return_dataclass:
+        return raw_calendar
+
+    try:
+        return parse_calendar(raw_calendar)
+    except CalendarContractError as error:
+        if on_dataclass_error == "raise":
+            raise
+        warnings.warn(CalendarContractWarning(error.issues), stacklevel=2)
+        return raw_calendar
 
 def get_reviews(room_url: str ,language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
     """
@@ -85,7 +178,13 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     
     # Get calendar and reviews data
     data["reviews"] = reviews.get(api_key, product_id, currency, language, proxy_url, timeout=timeout)
-    data["calendar"] = get_calendar(api_key, room_id, proxy_url, timeout=timeout)
+    data["calendar"] = get_calendar(
+        api_key,
+        str(room_id),
+        proxy_url,
+        timeout=timeout,
+        return_dataclass=False,
+    )
     
     # Get price data if check-in and check-out dates are provided
     if check_in and check_out:

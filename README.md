@@ -118,6 +118,32 @@ data = pyairbnb.get_price(
 )
 ```
 
+### Getting a calendar
+
+`get_calendar` validates Airbnb's calendar response and returns immutable
+dataclasses by default. If Airbnb changes the response contract, the default
+behavior emits one `CalendarContractWarning` and returns the complete raw list
+of dictionaries instead, so no new fields are lost.
+
+```python
+import pyairbnb
+
+# CalendarMonth objects when the observed contract is valid.
+calendar = pyairbnb.get_calendar(room_id="123")
+
+# Always return the unvalidated Airbnb dictionaries.
+raw_calendar = pyairbnb.get_calendar(
+    room_id="123",
+    return_dataclass=False,
+)
+
+# Return CalendarMonth objects or raise CalendarContractError.
+strict_calendar = pyairbnb.get_calendar(
+    room_id="123",
+    on_dataclass_error="raise",
+)
+```
+
 
 ### Getting listings from user id
 ```Python
