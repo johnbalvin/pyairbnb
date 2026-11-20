@@ -4,6 +4,7 @@ import string
 import time
 import uuid
 from datetime import date
+import json
 from curl_cffi import requests
 import pyairbnb.utils as utils
 import pyairbnb.api as api
@@ -14,10 +15,6 @@ from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 class UnavailableError(Exception):
     """Raised when the listing is unavailable for the specified dates."""
     pass
-
-
-class _PriceResponseError(RuntimeError):
-    """Raised when a response suggests the persisted-query hash is stale."""
 
 
 BASE_URL = "https://www.airbnb.com/api/v3/StaysPdpSections"
@@ -271,10 +268,8 @@ def get(
             # Airbnb rotates the persisted-query hash; refresh it once and retry
             try:
                 PERSISTED_QUERY_HASH = fetch_pdp_sections_hash(proxy_url=proxy_url, timeout=timeout)
-            except Exception as refresh_error:
-                raise last_error or RuntimeError(
-                    "StaysPdpSections hash refresh failed"
-                ) from refresh_error
+            except Exception:
+                pass
             body["extensions"]["persistedQuery"]["sha256Hash"] = PERSISTED_QUERY_HASH
             url = f"{BASE_URL}/{PERSISTED_QUERY_HASH}?operationName=StaysPdpSections&locale={language}&currency={currency}"
 
@@ -284,32 +279,19 @@ def get(
                     session.cookies.update(cookies)
                 response = session.post(url=url, headers=headers, json=body, proxies=proxies, timeout=timeout)
 
-            if response.status_code in (400, 404):
-                raise _PriceResponseError(
-                    f"StaysPdpSections rejected the request with HTTP {response.status_code}"
-                )
-
             response.raise_for_status()
             data = response.json()
 
             if not utils.get_nested_value(data, "data.presentation"):
                 errors = data.get("errors") or []
                 message = errors[0].get("message", "unknown error") if errors else "empty response"
-                raise _PriceResponseError(f"StaysPdpSections failed: {message}")
+                raise RuntimeError(f"StaysPdpSections failed: {message}")
 
-            result = _parse_price_response(data)
-            if "main" not in result:
-                raise _PriceResponseError(
-                    "StaysPdpSections returned no BOOK_IT_SIDEBAR price"
-                )
-            return result
+            return _parse_price_response(data)
         except UnavailableError:
             raise
-        except _PriceResponseError as error:
+        except Exception as error:
             last_error = error
-            if attempt == 0:
-                continue
-            raise
 
     raise last_error if last_error else RuntimeError("StaysPdpSections failed")
 
