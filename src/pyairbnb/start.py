@@ -330,6 +330,27 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     
     return data
 
+def _next_search_cursor(pagination_info: dict, cursor: str, fetched: set) -> str:
+    """
+    The cursor of the next search page, or "" when there is none.
+
+    Airbnb used to send `nextPageCursor` on every page. Since November 2026
+    StaysSearch lists every page up front in `pageCursors` instead and leaves
+    `nextPageCursor` out, so following only the latter stops after page 1
+    (40 results) without an error. Both shapes are followed here; `fetched`
+    remembers what was requested so a cursor is never asked for twice.
+    """
+    fetched.add(cursor)
+    page_cursors = pagination_info.get("pageCursors") or []
+    if cursor == "" and page_cursors:
+        # The first request has no cursor; page_cursors[0] is that same page.
+        fetched.add(page_cursors[0])
+    next_cursor = pagination_info.get("nextPageCursor") or next(
+        (c for c in page_cursors if c not in fetched), ""
+    )
+    return "" if next_cursor in fetched else next_cursor
+
+
 def search_all(
     check_in: str,
     check_out: str,
@@ -411,6 +432,7 @@ def search_all(
     api_key = api.get(proxy_url, timeout=timeout)
     all_results = []
     cursor = ""
+    fetched = set()
     while True:
         results_raw = search.get(
             api_key=api_key,
@@ -428,9 +450,9 @@ def search_all(
         paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
         results = standardize.from_search(results_raw)
         all_results.extend(results)
-        if not results or "nextPageCursor" not in paginationInfo or paginationInfo["nextPageCursor"] is None:
+        cursor = _next_search_cursor(paginationInfo, cursor, fetched)
+        if not results or not cursor:
             break
-        cursor = paginationInfo["nextPageCursor"]
     return all_results
 
 def search_first_page(
@@ -564,6 +586,7 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
     api_key = api.get(proxy_url)
     all_results = []
     cursor = ""
+    fetched = set()
     # search.get's structured-args are ignored when raw_params is supplied,
     # but they're still required by the signature. Pass them by name so this
     # call doesn't break if their positional order ever changes.
@@ -586,7 +609,7 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
         )
         results = standardize.from_search(results_raw)
         all_results.extend(results)
-        if not results or not paginationInfo.get("nextPageCursor"):
+        cursor = _next_search_cursor(paginationInfo, cursor, fetched)
+        if not results or not cursor:
             break
-        cursor = paginationInfo["nextPageCursor"]
     return all_results
