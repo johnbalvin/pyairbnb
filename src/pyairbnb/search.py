@@ -145,7 +145,17 @@ def fetch_stays_search_hash(proxy_url: str = "", timeout: Timeout = DEFAULT_TIME
 
     raise RuntimeError("Unable to extract StaysSearch operationId")
 
-def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int, price_max: int, amenities: list, free_cancellation: bool, adults: int, children: int, infants: int, min_bedrooms: int, min_beds: int, min_bathrooms: int, language: str, proxy_url:str, hash:str, raw_params: list = None, timeout: Timeout = DEFAULT_TIMEOUT):
+def get(api_key:str, cursor:str, check_in:str, check_out:str, ne_lat:float, ne_long:float, sw_lat:float, sw_long:float, zoom_value:int, currency:str, place_type: str, price_min: int | float | str | None, price_max: int | float | str | None, amenities: list, free_cancellation: bool, adults: int | float | str | None, children: int | float | str | None, infants: int | float | str | None, min_bedrooms: int | float | str | None, min_beds: int | float | str | None, min_bathrooms: int | float | str | None, language: str, proxy_url:str, hash:str, raw_params: list = None, timeout: Timeout = DEFAULT_TIMEOUT):
+
+    if raw_params is None:
+        price_min = utils.coerce_number(price_min, "price_min") or 0
+        price_max = utils.coerce_number(price_max, "price_max") or 0
+        adults = utils.coerce_number(adults, "adults") or 0
+        children = utils.coerce_number(children, "children") or 0
+        infants = utils.coerce_number(infants, "infants") or 0
+        min_bedrooms = utils.coerce_number(min_bedrooms, "min_bedrooms") or 0
+        min_beds = utils.coerce_number(min_beds, "min_beds") or 0
+        min_bathrooms = utils.coerce_number(min_bathrooms, "min_bathrooms") or 0
 
     operationId = hash if hash else '9f945886dcc032b9ef4ba770d9132eb0aa78053296b5405483944c229617b00b'
     base_url = f"https://www.airbnb.com/api/v3/StaysSearch/{operationId}"

@@ -16,9 +16,130 @@ from pyairbnb.parsers.calendar import parse_calendar
 import pyairbnb.host_details as host_details
 from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
 from datetime import datetime
+from typing import Any
 from typing import Literal, overload
 from urllib.parse import urlparse
 import warnings
+
+
+_UNSET = object()
+_CURRENT_SEARCH_ARGUMENTS = (
+    "price_min",
+    "price_max",
+    "place_type",
+    "amenities",
+    "free_cancellation",
+    "adults",
+    "children",
+    "infants",
+    "min_bedrooms",
+    "min_beds",
+    "min_bathrooms",
+    "currency",
+    "language",
+    "proxy_url",
+    "hash",
+    "timeout",
+)
+_LEGACY_SEARCH_ARGUMENTS = (
+    "currency",
+    "place_type",
+    "price_min",
+    "price_max",
+    "amenities",
+    "language",
+    "proxy_url",
+)
+_NUMERIC_SEARCH_ARGUMENTS = {
+    "price_min",
+    "price_max",
+    "adults",
+    "children",
+    "infants",
+    "min_bedrooms",
+    "min_beds",
+    "min_bathrooms",
+}
+
+
+def _search_defaults() -> dict[str, Any]:
+    return {
+        "price_min": 0,
+        "price_max": 0,
+        "place_type": "",
+        "amenities": [],
+        "free_cancellation": False,
+        "adults": 0,
+        "children": 0,
+        "infants": 0,
+        "min_bedrooms": 0,
+        "min_beds": 0,
+        "min_bathrooms": 0,
+        "currency": "USD",
+        "language": "en",
+        "proxy_url": "",
+        "hash": "",
+        "timeout": DEFAULT_TIMEOUT,
+    }
+
+
+def _is_number(value: Any) -> bool:
+    try:
+        utils.coerce_number(value)
+    except (TypeError, ValueError):
+        return False
+    return value is not None and value != ""
+
+
+def _uses_legacy_search_order(
+    positional_args: tuple[Any, ...], keyword_args: dict[str, Any]
+) -> bool:
+    if not positional_args:
+        return False
+
+    first = positional_args[0]
+    if not isinstance(first, str) or first == "" or _is_number(first):
+        return False
+
+    if len(positional_args) >= 2 and _is_number(positional_args[1]):
+        return False
+
+    return len(positional_args) >= 2 or "price_min" in keyword_args
+
+
+def _resolve_search_arguments(
+    function_name: str,
+    positional_args: tuple[Any, ...],
+    keyword_args: dict[str, Any],
+) -> dict[str, Any]:
+    argument_names = (
+        _LEGACY_SEARCH_ARGUMENTS
+        if _uses_legacy_search_order(positional_args, keyword_args)
+        else _CURRENT_SEARCH_ARGUMENTS
+    )
+    if len(positional_args) > len(argument_names):
+        raise TypeError(
+            f"{function_name}() received {len(positional_args)} positional search "
+            f"arguments; expected at most {len(argument_names)}"
+        )
+
+    resolved = _search_defaults()
+    assigned = set()
+    for name, value in zip(argument_names, positional_args):
+        resolved[name] = value
+        assigned.add(name)
+
+    for name, value in keyword_args.items():
+        if name in assigned:
+            raise TypeError(
+                f"{function_name}() got multiple values for argument {name!r}"
+            )
+        resolved[name] = value
+
+    for name in _NUMERIC_SEARCH_ARGUMENTS:
+        resolved[name] = utils.coerce_number(resolved[name], name) or 0
+
+    return resolved
 
 
 @overload
@@ -209,8 +330,32 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     
     return data
 
-def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, adults: int = 0, children: int = 0, infants: int = 0, min_bedrooms: int = 0, min_beds: int = 0, min_bathrooms: int = 0, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
+def search_all(
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    *search_args: Any,
+    price_min: Any = _UNSET,
+    price_max: Any = _UNSET,
+    place_type: str = _UNSET,
+    amenities: list = _UNSET,
+    free_cancellation: bool = _UNSET,
+    adults: Any = _UNSET,
+    children: Any = _UNSET,
+    infants: Any = _UNSET,
+    min_bedrooms: Any = _UNSET,
+    min_beds: Any = _UNSET,
+    min_bathrooms: Any = _UNSET,
+    currency: str = _UNSET,
+    language: str = _UNSET,
+    proxy_url: str = _UNSET,
+    hash: str = _UNSET,
+    timeout: Timeout = _UNSET,
+):
     """
     Performs a paginated search for all rooms within specified geographic bounds.
 
@@ -237,13 +382,48 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
     Returns:
         list: A list of all search results.
     """
+    keyword_args = {
+        name: value
+        for name, value in {
+            "price_min": price_min,
+            "price_max": price_max,
+            "place_type": place_type,
+            "amenities": amenities,
+            "free_cancellation": free_cancellation,
+            "adults": adults,
+            "children": children,
+            "infants": infants,
+            "min_bedrooms": min_bedrooms,
+            "min_beds": min_beds,
+            "min_bathrooms": min_bathrooms,
+            "currency": currency,
+            "language": language,
+            "proxy_url": proxy_url,
+            "hash": hash,
+            "timeout": timeout,
+        }.items()
+        if value is not _UNSET
+    }
+    params = _resolve_search_arguments("search_all", search_args, keyword_args)
+
+    proxy_url = params["proxy_url"]
+    timeout = params["timeout"]
     api_key = api.get(proxy_url, timeout=timeout)
     all_results = []
     cursor = ""
     while True:
         results_raw = search.get(
-            api_key, cursor, check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value,
-            currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash, timeout=timeout
+            api_key=api_key,
+            cursor=cursor,
+            check_in=check_in,
+            check_out=check_out,
+            ne_lat=ne_lat,
+            ne_long=ne_long,
+            sw_lat=sw_lat,
+            sw_long=sw_long,
+            zoom_value=zoom_value,
+            timeout=params["timeout"],
+            **{name: params[name] for name in _CURRENT_SEARCH_ARGUMENTS if name != "timeout"},
         )
         paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
         results = standardize.from_search(results_raw)
@@ -253,8 +433,32 @@ def search_all(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_
         cursor = paginationInfo["nextPageCursor"]
     return all_results
 
-def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: float, sw_lat: float, sw_long: float,
-               zoom_value: int, price_min: int, price_max: int, place_type: str = "", amenities: list = [], free_cancellation: bool = False, adults: int = 0, children: int = 0, infants: int = 0, min_bedrooms: int = 0, min_beds: int = 0, min_bathrooms: int = 0, currency: str = "USD", language: str = "en", proxy_url: str = "", hash: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
+def search_first_page(
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    *search_args: Any,
+    price_min: Any = _UNSET,
+    price_max: Any = _UNSET,
+    place_type: str = _UNSET,
+    amenities: list = _UNSET,
+    free_cancellation: bool = _UNSET,
+    adults: Any = _UNSET,
+    children: Any = _UNSET,
+    infants: Any = _UNSET,
+    min_bedrooms: Any = _UNSET,
+    min_beds: Any = _UNSET,
+    min_bathrooms: Any = _UNSET,
+    currency: str = _UNSET,
+    language: str = _UNSET,
+    proxy_url: str = _UNSET,
+    hash: str = _UNSET,
+    timeout: Timeout = _UNSET,
+):
     """
     Searches the first page of results within specified geographic bounds.
 
@@ -281,10 +485,45 @@ def search_first_page(check_in: str, check_out: str, ne_lat: float, ne_long: flo
     Returns:
         list: A list of search results from the first page.
     """
+    keyword_args = {
+        name: value
+        for name, value in {
+            "price_min": price_min,
+            "price_max": price_max,
+            "place_type": place_type,
+            "amenities": amenities,
+            "free_cancellation": free_cancellation,
+            "adults": adults,
+            "children": children,
+            "infants": infants,
+            "min_bedrooms": min_bedrooms,
+            "min_beds": min_beds,
+            "min_bathrooms": min_bathrooms,
+            "currency": currency,
+            "language": language,
+            "proxy_url": proxy_url,
+            "hash": hash,
+            "timeout": timeout,
+        }.items()
+        if value is not _UNSET
+    }
+    params = _resolve_search_arguments("search_first_page", search_args, keyword_args)
+
+    proxy_url = params["proxy_url"]
+    timeout = params["timeout"]
     api_key = api.get(proxy_url, timeout=timeout)
     results_raw = search.get(
-        api_key, "", check_in, check_out, ne_lat, ne_long, sw_lat, sw_long, zoom_value,
-        currency, place_type, price_min, price_max, amenities, free_cancellation, adults, children, infants, min_bedrooms, min_beds, min_bathrooms, language, proxy_url, hash=hash, timeout=timeout
+        api_key=api_key,
+        cursor="",
+        check_in=check_in,
+        check_out=check_out,
+        ne_lat=ne_lat,
+        ne_long=ne_long,
+        sw_lat=sw_lat,
+        sw_long=sw_long,
+        zoom_value=zoom_value,
+        timeout=timeout,
+        **{name: params[name] for name in _CURRENT_SEARCH_ARGUMENTS if name != "timeout"},
     )
 
     results = standardize.from_search(results_raw)

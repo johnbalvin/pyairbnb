@@ -1,3 +1,4 @@
+import math
 import re
 from typing import TypeAlias
 from urllib.parse import quote
@@ -8,6 +9,26 @@ DEFAULT_TIMEOUT: Timeout = 60
 
 regex_space = re.compile(r'[\s ]+')
 regx_price = re.compile(r'\d+(?:\.\d+)?')
+
+def coerce_number(value, name: str = "value") -> int | float | None:
+    """Convert a numeric filter value, preserving integer values as ints."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        value = value.strip()
+        if value == "":
+            return None
+
+    try:
+        number = float(value)
+    except (TypeError, ValueError) as error:
+        raise ValueError(f"{name} must be a number; got {value!r}") from error
+
+    if not math.isfinite(number):
+        raise ValueError(f"{name} must be a finite number; got {value!r}")
+
+    return int(number) if number.is_integer() else number
 
 def remove_space(value:str):
     return regex_space.sub(' ', value.strip())
