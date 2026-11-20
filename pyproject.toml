@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 
-version = '2.2.6'
+version = '2.2.7'
 name="pyairbnb"
 description = 'Airbnb scraper in Python'
 authors = [

@@ -230,6 +230,18 @@ class ReviewsRequestTests(unittest.TestCase):
         self.assertEqual(self.mock_get.call_count, 1)
         fetch_hash.assert_not_called()
 
+    def test_http_422_invalid_listing_fails_without_refresh(self):
+        self.mock_get.return_value = error_response(422)
+
+        with (
+            patch(f"{reviews.__name__}.fetch_reviews_hash") as fetch_hash,
+            self.assertRaisesRegex(RuntimeError, r"HTTP 422.*invalid listing"),
+        ):
+            reviews.get_from_offset("key", 0, "invalid", timeout=10)
+
+        self.assertEqual(self.mock_get.call_count, 1)
+        fetch_hash.assert_not_called()
+
     def test_network_error_is_not_mistaken_for_a_stale_hash(self):
         self.mock_get.side_effect = requests.exceptions.Timeout("timed out")
 

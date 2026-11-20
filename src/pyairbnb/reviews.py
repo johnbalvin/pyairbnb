@@ -196,6 +196,10 @@ def get_from_offset(
                 raise _ReviewsResponseError(
                     f"StaysPdpReviewsQuery rejected the request with HTTP {response.status_code}"
                 )
+            if response.status_code == 422:
+                raise RuntimeError(
+                    "StaysPdpReviewsQuery failed (HTTP 422): invalid listing or request variables"
+                )
 
             response.raise_for_status()
             data = response.json()
