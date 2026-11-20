@@ -1,6 +1,10 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
 
-version = '2.2.1'
+version = '2.2.3'
 name="pyairbnb"
 description = 'Airbnb scraper in Python'
 authors = [
@@ -9,7 +13,16 @@ authors = [
 readme= "README.md"
 keywords=['airbnb', 'scraper', 'crawler','bot','reviews']
 dependencies=['curl_cffi','bs4','requests']
+requires-python = ">=3.10"
 
 
 [project.urls]
 Homepage='https://github.com/johnbalvin/pyairbnb'
+
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+
+[tool.setuptools.package-data]
+pyairbnb = ["py.typed"]
