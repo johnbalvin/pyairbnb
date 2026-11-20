@@ -1,7 +1,17 @@
 from curl_cffi import requests
 import pyairbnb.parse as parse
 from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
+from urllib.parse import urlparse, urlunparse
 
+
+def _airbnb_ca_fallback(room_url: str) -> str | None:
+    parsed = urlparse(room_url)
+    if parsed.hostname != "www.airbnb.com" and parsed.hostname != "airbnb.com":
+        return None
+    netloc = "www.airbnb.ca"
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 def get(room_url: str, language: str, proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT):
@@ -23,8 +33,25 @@ def get(room_url: str, language: str, proxy_url: str, timeout: Timeout = DEFAULT
     proxies = {}
     if proxy_url:
         proxies = {"http": proxy_url, "https": proxy_url}
-    response = requests.get(room_url, headers=headers, proxies=proxies, timeout=timeout)
-    response.raise_for_status()
-    data_formatted, price_dependency_input=parse.parse_body_details_wrapper(response.text)
-    cookies = response.cookies
-    return data_formatted, price_dependency_input, cookies
+
+    candidate_urls = [room_url]
+    fallback_url = _airbnb_ca_fallback(room_url)
+    if fallback_url:
+        candidate_urls.append(fallback_url)
+
+    last_parse_error: Exception | None = None
+    for candidate_url in candidate_urls:
+        response = requests.get(
+            candidate_url, headers=headers, proxies=proxies, timeout=timeout
+        )
+        response.raise_for_status()
+        try:
+            data_formatted, price_dependency_input = parse.parse_body_details_wrapper(
+                response.text
+            )
+        except (AttributeError, IndexError, KeyError, TypeError, ValueError) as error:
+            last_parse_error = error
+            continue
+        return data_formatted, price_dependency_input, response.cookies
+
+    raise last_parse_error or RuntimeError("Unable to parse Airbnb room details")
