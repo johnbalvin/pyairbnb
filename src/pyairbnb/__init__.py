@@ -7,8 +7,11 @@ from pyairbnb.search import get_markets, get_places_ids, fetch_stays_search_hash
 from pyairbnb.start import (
     get_calendar,
     search_all,
+    search_all_complete,
     search_all_from_url,
     search_first_page,
+    SearchCoverageError,
+    SearchResultsTruncatedWarning,
     get_reviews,
     get_details,
 )
@@ -44,8 +47,11 @@ __all__ = [
     "fetch_stays_search_hash",
     "get_calendar",
     "search_all",
+    "search_all_complete",
     "search_all_from_url",
     "search_first_page",
+    "SearchCoverageError",
+    "SearchResultsTruncatedWarning",
     "get_reviews",
     "get_details",
     "experience_search",

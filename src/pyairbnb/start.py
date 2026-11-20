@@ -15,6 +15,7 @@ from pyairbnb.models import CalendarMonth
 from pyairbnb.parsers.calendar import parse_calendar
 import pyairbnb.host_details as host_details
 from pyairbnb.utils import DEFAULT_TIMEOUT, Timeout
+from collections import deque
 from datetime import datetime
 from typing import Any
 from typing import Literal, overload
@@ -22,7 +23,22 @@ from urllib.parse import urlparse
 import warnings
 
 
+class SearchResultsTruncatedWarning(UserWarning):
+    """Raised when Airbnb reports the maximum number of search pages."""
+
+
+class SearchCoverageError(RuntimeError):
+    """Raised when a complete search exceeds its request or depth budget."""
+
+    def __init__(self, message: str, results: list[dict[str, Any]]):
+        super().__init__(message)
+        self.results = results
+
+
 _UNSET = object()
+_SEARCH_PAGE_LIMIT = 7
+_DEFAULT_COMPLETE_MAX_REQUESTS = 500
+_DEFAULT_COMPLETE_MAX_DEPTH = 8
 _CURRENT_SEARCH_ARGUMENTS = (
     "price_min",
     "price_max",
@@ -364,6 +380,186 @@ def _extend_unique_search_results(
         all_results.append(result)
 
 
+def _pagination_page_count(pagination_info: dict) -> int:
+    page_cursors = pagination_info.get("pageCursors") or []
+    if page_cursors:
+        return len(page_cursors)
+    return 2 if pagination_info.get("nextPageCursor") else 1
+
+
+def _pagination_is_truncated(pagination_info: dict) -> bool:
+    return _pagination_page_count(pagination_info) >= _SEARCH_PAGE_LIMIT
+
+
+def _search_request(
+    api_key: str,
+    cursor: str,
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    params: dict[str, Any],
+) -> dict:
+    return search.get(
+        api_key=api_key,
+        cursor=cursor,
+        check_in=check_in,
+        check_out=check_out,
+        ne_lat=ne_lat,
+        ne_long=ne_long,
+        sw_lat=sw_lat,
+        sw_long=sw_long,
+        zoom_value=zoom_value,
+        timeout=params["timeout"],
+        **{name: params[name] for name in _CURRENT_SEARCH_ARGUMENTS if name != "timeout"},
+    )
+
+
+def _search_paginated_bbox(
+    api_key: str,
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    params: dict[str, Any],
+) -> tuple[list, bool]:
+    all_results = []
+    seen_room_ids = set()
+    cursor = ""
+    fetched = set()
+    truncated = False
+
+    while True:
+        results_raw = _search_request(
+            api_key,
+            cursor,
+            check_in,
+            check_out,
+            ne_lat,
+            ne_long,
+            sw_lat,
+            sw_long,
+            zoom_value,
+            params,
+        )
+        pagination_info = utils.get_nested_value(
+            results_raw, "data.presentation.staysSearch.results.paginationInfo", {}
+        )
+        if not cursor and _pagination_is_truncated(pagination_info):
+            truncated = True
+
+        results = standardize.from_search(results_raw)
+        _extend_unique_search_results(all_results, results, seen_room_ids)
+        cursor = _next_search_cursor(pagination_info, cursor, fetched)
+        if not results or not cursor:
+            break
+
+    return all_results, truncated
+
+
+def _search_single_page_bbox(
+    api_key: str,
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    params: dict[str, Any],
+) -> tuple[list, int]:
+    results_raw = _search_request(
+        api_key,
+        "",
+        check_in,
+        check_out,
+        ne_lat,
+        ne_long,
+        sw_lat,
+        sw_long,
+        zoom_value,
+        params,
+    )
+    pagination_info = utils.get_nested_value(
+        results_raw, "data.presentation.staysSearch.results.paginationInfo", {}
+    )
+    return standardize.from_search(results_raw), _pagination_page_count(pagination_info)
+
+
+def _search_complete_bboxes(
+    api_key: str,
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    params: dict[str, Any],
+    max_requests: int,
+    max_depth: int,
+) -> list:
+    all_results = []
+    seen_room_ids = set()
+    pending = deque([(sw_lat, sw_long, ne_lat, ne_long, 0)])
+    request_count = 0
+
+    while pending:
+        tile_sw_lat, tile_sw_long, tile_ne_lat, tile_ne_long, depth = pending.popleft()
+        if request_count >= max_requests:
+            raise SearchCoverageError(
+                f"Complete search exceeded the {max_requests}-request budget",
+                all_results,
+            )
+
+        results, page_count = _search_single_page_bbox(
+            api_key,
+            check_in,
+            check_out,
+            tile_ne_lat,
+            tile_ne_long,
+            tile_sw_lat,
+            tile_sw_long,
+            zoom_value,
+            params,
+        )
+        request_count += 1
+
+        if page_count <= 1:
+            _extend_unique_search_results(all_results, results, seen_room_ids)
+            continue
+
+        # Rows from the capped parent page are still valid; retain them before
+        # querying smaller tiles, where duplicates will be filtered normally.
+        _extend_unique_search_results(all_results, results, seen_room_ids)
+
+        if depth >= max_depth:
+            raise SearchCoverageError(
+                f"Complete search reached the maximum subdivision depth {max_depth} "
+                f"with {page_count} pages remaining",
+                all_results,
+            )
+
+        mid_lat = (tile_sw_lat + tile_ne_lat) / 2
+        mid_long = (tile_sw_long + tile_ne_long) / 2
+        pending.extend(
+            [
+                (tile_sw_lat, tile_sw_long, mid_lat, mid_long, depth + 1),
+                (tile_sw_lat, mid_long, mid_lat, tile_ne_long, depth + 1),
+                (mid_lat, tile_sw_long, tile_ne_lat, mid_long, depth + 1),
+                (mid_lat, mid_long, tile_ne_lat, tile_ne_long, depth + 1),
+            ]
+        )
+
+    return all_results
+
+
 def search_all(
     check_in: str,
     check_out: str,
@@ -373,6 +569,10 @@ def search_all(
     sw_long: float,
     zoom_value: int,
     *search_args: Any,
+    complete: bool = False,
+    max_requests: int = _DEFAULT_COMPLETE_MAX_REQUESTS,
+    max_depth: int = _DEFAULT_COMPLETE_MAX_DEPTH,
+    warn_on_truncation: bool = True,
     price_min: Any = _UNSET,
     price_max: Any = _UNSET,
     place_type: str = _UNSET,
@@ -412,6 +612,11 @@ def search_all(
         min_bathrooms (int): Minimum number of bathrooms
         language (str): language to use for example en,es,tr ..etc
         proxy_url (str): Proxy URL.
+        complete (bool): Subdivide capped areas until every request fits on
+            one page. This is slower but avoids silent truncation.
+        max_requests (int): Request budget for complete searches.
+        max_depth (int): Maximum bounding-box subdivision depth.
+        warn_on_truncation (bool): Warn when Airbnb reports its page cap.
 
     Returns:
         list: A list of all search results.
@@ -443,31 +648,72 @@ def search_all(
     proxy_url = params["proxy_url"]
     timeout = params["timeout"]
     api_key = api.get(proxy_url, timeout=timeout)
-    all_results = []
-    seen_room_ids = set()
-    cursor = ""
-    fetched = set()
-    while True:
-        results_raw = search.get(
-            api_key=api_key,
-            cursor=cursor,
-            check_in=check_in,
-            check_out=check_out,
-            ne_lat=ne_lat,
-            ne_long=ne_long,
-            sw_lat=sw_lat,
-            sw_long=sw_long,
-            zoom_value=zoom_value,
-            timeout=params["timeout"],
-            **{name: params[name] for name in _CURRENT_SEARCH_ARGUMENTS if name != "timeout"},
+
+    if complete:
+        if max_requests <= 0:
+            raise ValueError("max_requests must be greater than zero")
+        if max_depth < 0:
+            raise ValueError("max_depth must be zero or greater")
+        return _search_complete_bboxes(
+            api_key,
+            check_in,
+            check_out,
+            ne_lat,
+            ne_long,
+            sw_lat,
+            sw_long,
+            zoom_value,
+            params,
+            max_requests,
+            max_depth,
         )
-        paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
-        results = standardize.from_search(results_raw)
-        _extend_unique_search_results(all_results, results, seen_room_ids)
-        cursor = _next_search_cursor(paginationInfo, cursor, fetched)
-        if not results or not cursor:
-            break
+
+    all_results, truncated = _search_paginated_bbox(
+        api_key,
+        check_in,
+        check_out,
+        ne_lat,
+        ne_long,
+        sw_lat,
+        sw_long,
+        zoom_value,
+        params,
+    )
+    if truncated and warn_on_truncation:
+        warnings.warn(
+            "Airbnb reported the maximum number of search pages; results may be "
+            "incomplete. Use search_all(..., complete=True) or search_all_complete() "
+            "for bounded bounding-box subdivision.",
+            SearchResultsTruncatedWarning,
+            stacklevel=2,
+        )
     return all_results
+
+
+def search_all_complete(
+    check_in: str,
+    check_out: str,
+    ne_lat: float,
+    ne_long: float,
+    sw_lat: float,
+    sw_long: float,
+    zoom_value: int,
+    *search_args: Any,
+    **search_kwargs: Any,
+) -> list:
+    """Run search_all with bounded bounding-box subdivision enabled."""
+    search_kwargs["complete"] = True
+    return search_all(
+        check_in,
+        check_out,
+        ne_lat,
+        ne_long,
+        sw_lat,
+        sw_long,
+        zoom_value,
+        *search_args,
+        **search_kwargs,
+    )
 
 def search_first_page(
     check_in: str,
@@ -597,11 +843,12 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
     parameter (known or unknown) is passed through.
     """
     raw_params = search.url_to_raw_params(url)
-    api_key = api.get(proxy_url)
+    api_key = api.get(proxy_url, timeout=timeout)
     all_results = []
     seen_room_ids = set()
     cursor = ""
     fetched = set()
+    truncated = False
     # search.get's structured-args are ignored when raw_params is supplied,
     # but they're still required by the signature. Pass them by name so this
     # call doesn't break if their positional order ever changes.
@@ -622,9 +869,18 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
         paginationInfo = utils.get_nested_value(
             results_raw, "data.presentation.staysSearch.results.paginationInfo", {}
         )
+        if not cursor and _pagination_is_truncated(paginationInfo):
+            truncated = True
         results = standardize.from_search(results_raw)
         _extend_unique_search_results(all_results, results, seen_room_ids)
         cursor = _next_search_cursor(paginationInfo, cursor, fetched)
         if not results or not cursor:
             break
+    if truncated:
+        warnings.warn(
+            "Airbnb reported the maximum number of search pages; results may be "
+            "incomplete.",
+            SearchResultsTruncatedWarning,
+            stacklevel=2,
+        )
     return all_results

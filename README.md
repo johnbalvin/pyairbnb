@@ -70,6 +70,25 @@ search_results = pyairbnb.search_all(
     timeout=30,
 )
 
+# For large or dense areas where Airbnb caps paginated results, request a
+# complete search. This recursively subdivides the bounding box and is slower:
+search_results = pyairbnb.search_all(
+    check_in=check_in,
+    check_out=check_out,
+    ne_lat=ne_lat,
+    ne_long=ne_long,
+    sw_lat=sw_lat,
+    sw_long=sw_long,
+    zoom_value=zoom_value,
+    price_min=price_min,
+    price_max=price_max,
+    place_type=place_type,
+    currency=currency,
+    language=language,
+    complete=True,
+    max_requests=500,
+)
+
 # Save the search results as a JSON file
 with open('search_results.json', 'w', encoding='utf-8') as f:
     f.write(json.dumps(search_results))  # Convert results to JSON and write to file
