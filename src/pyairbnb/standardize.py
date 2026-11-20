@@ -244,8 +244,7 @@ def from_details(meta):
                 )
                 for amenityGroupRaw in groups_raw:
                     group_title = amenityGroupRaw.get("title","") or ""
-                    # Airbnb lists excluded amenities under a "not included" /
-                    # "doesn't include" group.
+                    # Airbnb lists excluded amenities under a "not included" group.
                     group_title_lower = group_title.lower()
                     not_included = any(
                         phrase in group_title_lower
@@ -264,8 +263,7 @@ def from_details(meta):
                         }
                         amenityGroup["values"].append(amenity)
                     data["amenities"].append(amenityGroup)
-    # Fallbacks for pages where the primary title/description sections are
-    # missing or empty. Only fields that are still blank get filled.
+    # Fill fields that are still blank; primary sections win.
     pdp_sections = utils.get_nested_value(meta,"data.presentation.stayProductDetailPage.sections",{}) or {}
     metadata = utils.get_nested_value(pdp_sections,"metadata",{}) or {}
     seo_title = utils.get_nested_value(metadata,"seoFeatures.title","")
