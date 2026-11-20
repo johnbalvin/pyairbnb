@@ -15,6 +15,18 @@ _REVIEWS_PAGE_SIZE = 50
 
 _UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"  # TO-DO randomize this later
 
+_ASYNC_REQUIRE_RE = re.compile(
+    r"https://a0\.muscache\.com/airbnb/static/packages/web/[^/]+/frontend/airmetro/browser/asyncRequire\.[^\"']+\.js"
+)
+_HANDOFF_ACTION_RE = re.compile(r'<form[^>]+action="([^"]+)"')
+_HANDOFF_PAYLOAD_RE = re.compile(r'<input[^>]+name="payload"[^>]+value="([^"]+)"')
+_REVIEWS_MODULE_RE = re.compile(
+    r"(?:common|[a-z]{2}(?:-[A-Za-z]{2,4})?)/frontend/gp-stays-pdp-sections/migrated-sections/ReviewsSection/ReviewsSection[^\"'\\\s<>]*\.js"
+)
+_REVIEWS_HASH_RE = re.compile(
+    r"name:['\"]StaysPdpReviewsQuery['\"],type:['\"](?:query|mutation)['\"],operationId:['\"]([0-9a-f]{64})['\"]"
+)
+
 
 class _ReviewsResponseError(RuntimeError):
     """Raised when a response suggests the persisted-query hash is stale."""
@@ -30,14 +42,15 @@ def _build_headers(api_key: str) -> dict:
     }
 
 
-def fetch_reviews_hash(proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT) -> str:
-    """Fetch the live StaysPdpReviewsQuery persisted-query hash from airbnb.ca bundles."""
+def fetch_reviews_hash(
+    proxy_url: str | None = None, timeout: Timeout = DEFAULT_TIMEOUT
+) -> str:
+    """Fetch the live StaysPdpReviewsQuery persisted-query hash from Airbnb web bundles."""
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
     headers = {"User-Agent": _UA}
 
-    # airbnb.com serves a geo-handoff form for HTML pages; airbnb.ca serves the real app bundle
     homepage = requests.get(
-        "https://www.airbnb.ca/",
+        "https://www.airbnb.com/",
         headers=headers,
         proxies=proxies,
         impersonate="chrome124",
@@ -45,20 +58,36 @@ def fetch_reviews_hash(proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT) 
     )
     homepage.raise_for_status()
 
-    bundle_match = re.compile(
-        r"https://a0\.muscache\.com/airbnb/static/packages/web/[^/]+/frontend/airmetro/browser/asyncRequire\.[^\"']+\.js"
-    ).search(homepage.text)
+    bundle_match = _ASYNC_REQUIRE_RE.search(homepage.text)
+    if not bundle_match:
+        # Airbnb may return a domain-switch landing page instead of the actual homepage.
+        handoff_match = _HANDOFF_ACTION_RE.search(homepage.text)
+        payload_match = _HANDOFF_PAYLOAD_RE.search(homepage.text)
+        if handoff_match and payload_match:
+            homepage = requests.post(
+                handoff_match.group(1),
+                data={"version": "1", "payload": payload_match.group(1)},
+                headers=headers,
+                proxies=proxies,
+                impersonate="chrome124",
+                timeout=timeout,
+            )
+            homepage.raise_for_status()
+            bundle_match = _ASYNC_REQUIRE_RE.search(homepage.text)
+
     if not bundle_match:
         raise RuntimeError("Unable to locate StaysPdpReviewsQuery asyncRequire bundle")
 
     bundle = requests.get(
-        bundle_match.group(0), headers=headers, proxies=proxies, impersonate="chrome124", timeout=timeout
+        bundle_match.group(0),
+        headers=headers,
+        proxies=proxies,
+        impersonate="chrome124",
+        timeout=timeout,
     )
     bundle.raise_for_status()
 
-    module_match = re.compile(
-        r"(?:common|[a-z]{2}(?:-[A-Za-z]{2,4})?)/frontend/gp-stays-pdp-sections/migrated-sections/ReviewsSection/ReviewsSection\.[0-9a-f]+\.js"
-    ).search(bundle.text)
+    module_match = _REVIEWS_MODULE_RE.search(bundle.text)
     if not module_match:
         raise RuntimeError("Unable to locate StaysPdpReviewsQuery module chunk")
 
@@ -71,9 +100,7 @@ def fetch_reviews_hash(proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT) 
     )
     chunk.raise_for_status()
 
-    hash_match = re.compile(
-        r"name:['\"]StaysPdpReviewsQuery['\"],type:['\"](?:query|mutation)['\"],operationId:['\"]([0-9a-f]{64})['\"]"
-    ).search(chunk.text)
+    hash_match = _REVIEWS_HASH_RE.search(chunk.text)
     if not hash_match:
         raise RuntimeError("Unable to extract StaysPdpReviewsQuery operationId")
 
@@ -105,13 +132,15 @@ def get(
     product_id: str = "",
     currency: str = "USD",
     language: str = "en",
-    proxy_url: str = None,
+    proxy_url: str | None = None,
     timeout: Timeout = DEFAULT_TIMEOUT,
 ) -> list:
     offset = 0
     all_reviews = []
     while True:
-        reviews = get_from_offset(api_key, offset, product_id, currency, language, proxy_url, timeout=timeout)
+        reviews = get_from_offset(
+            api_key, offset, product_id, currency, language, proxy_url, timeout=timeout
+        )
         all_reviews.extend(reviews)
         if len(reviews) < _REVIEWS_PAGE_SIZE:
             break
@@ -125,7 +154,7 @@ def get_from_offset(
     product_id: str,
     currency: str = "USD",
     language: str = "en",
-    proxy_url: str = None,
+    proxy_url: str | None = None,
     timeout: Timeout = DEFAULT_TIMEOUT,
 ) -> list:
     global PERSISTED_QUERY_HASH
@@ -133,16 +162,21 @@ def get_from_offset(
     headers = _build_headers(api_key)
     proxies = {"http": proxy_url, "https": proxy_url} if proxy_url else None
 
+    query_hash = PERSISTED_QUERY_HASH
     last_error: Exception | None = None
     for attempt in range(2):
         if attempt == 1:
             # Airbnb rotates the persisted-query hash; refresh it once and retry
             try:
-                PERSISTED_QUERY_HASH = fetch_reviews_hash(proxy_url=proxy_url, timeout=timeout)
+                refreshed_hash = fetch_reviews_hash(proxy_url=proxy_url, timeout=timeout)
             except Exception as refresh_error:
                 raise last_error or RuntimeError(
                     "StaysPdpReviewsQuery hash refresh failed"
                 ) from refresh_error
+            if refreshed_hash == query_hash:
+                raise last_error or RuntimeError("StaysPdpReviewsQuery failed")
+            PERSISTED_QUERY_HASH = refreshed_hash
+            query_hash = refreshed_hash
 
         query = {
             "operationName": "StaysPdpReviewsQuery",
@@ -150,10 +184,10 @@ def get_from_offset(
             "currency": currency,
             "variables": json.dumps(_build_query_variables(product_id, offset)),
             "extensions": json.dumps(
-                {"persistedQuery": {"version": 1, "sha256Hash": PERSISTED_QUERY_HASH}}
+                {"persistedQuery": {"version": 1, "sha256Hash": query_hash}}
             ),
         }
-        url = f"{BASE_URL}/{PERSISTED_QUERY_HASH}/?{urlencode(query)}"
+        url = f"{BASE_URL}/{query_hash}/?{urlencode(query)}"
 
         try:
             response = requests.get(url, headers=headers, proxies=proxies, timeout=timeout)
@@ -166,12 +200,26 @@ def get_from_offset(
             response.raise_for_status()
             data = response.json()
 
-            reviews = utils.get_nested_value(
-                data, "data.presentation.stayProductDetailPage.reviews.reviews", None
+            reviews = (
+                utils.get_nested_value(
+                    data, "data.presentation.stayProductDetailPage.reviews.reviews", None
+                )
+                if isinstance(data, dict)
+                else None
             )
-            if not isinstance(reviews, list):
-                raise _ReviewsResponseError("StaysPdpReviewsQuery returned no reviews payload")
-            return reviews
+            if isinstance(reviews, list):
+                return reviews
+
+            errors = data.get("errors") if isinstance(data, dict) else None
+            if isinstance(errors, list) and errors and isinstance(errors[0], dict):
+                first_error = errors[0]
+                message = first_error.get("message") or "unknown error"
+                error_type = utils.get_nested_value(first_error, "extensions.errorType", "")
+                if error_type == "NOT_FOUND":
+                    raise RuntimeError(f"StaysPdpReviewsQuery failed (NOT_FOUND): {message}")
+                raise _ReviewsResponseError(f"StaysPdpReviewsQuery failed: {message}")
+
+            raise _ReviewsResponseError("StaysPdpReviewsQuery returned no reviews payload")
         except _ReviewsResponseError as error:
             last_error = error
             if attempt == 0:
