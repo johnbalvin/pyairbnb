@@ -351,6 +351,19 @@ def _next_search_cursor(pagination_info: dict, cursor: str, fetched: set) -> str
     return "" if next_cursor in fetched else next_cursor
 
 
+def _extend_unique_search_results(
+    all_results: list, results: list, seen_room_ids: set
+) -> None:
+    """Append results in page order without repeating the same listing."""
+    for result in results:
+        room_id = result.get("room_id") if isinstance(result, dict) else None
+        if room_id is not None:
+            if room_id in seen_room_ids:
+                continue
+            seen_room_ids.add(room_id)
+        all_results.append(result)
+
+
 def search_all(
     check_in: str,
     check_out: str,
@@ -431,6 +444,7 @@ def search_all(
     timeout = params["timeout"]
     api_key = api.get(proxy_url, timeout=timeout)
     all_results = []
+    seen_room_ids = set()
     cursor = ""
     fetched = set()
     while True:
@@ -449,7 +463,7 @@ def search_all(
         )
         paginationInfo = utils.get_nested_value(results_raw,"data.presentation.staysSearch.results.paginationInfo",{})
         results = standardize.from_search(results_raw)
-        all_results.extend(results)
+        _extend_unique_search_results(all_results, results, seen_room_ids)
         cursor = _next_search_cursor(paginationInfo, cursor, fetched)
         if not results or not cursor:
             break
@@ -585,6 +599,7 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
     raw_params = search.url_to_raw_params(url)
     api_key = api.get(proxy_url)
     all_results = []
+    seen_room_ids = set()
     cursor = ""
     fetched = set()
     # search.get's structured-args are ignored when raw_params is supplied,
@@ -608,7 +623,7 @@ def search_all_from_url(url: str, currency: str = "USD", language: str = "en", p
             results_raw, "data.presentation.staysSearch.results.paginationInfo", {}
         )
         results = standardize.from_search(results_raw)
-        all_results.extend(results)
+        _extend_unique_search_results(all_results, results, seen_room_ids)
         cursor = _next_search_cursor(paginationInfo, cursor, fetched)
         if not results or not cursor:
             break

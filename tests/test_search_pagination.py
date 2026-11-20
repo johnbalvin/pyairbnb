@@ -53,6 +53,18 @@ class SearchPaginationTests(unittest.TestCase):
             self.assertEqual(results, [])
             self.assertEqual(cursors, [""])
 
+    def test_duplicate_listings_across_pages_are_returned_once(self, *_):
+        pages = [
+            page([{"room_id": "1"}, {"room_id": "2"}], nextPageCursor="b"),
+            page([{"room_id": "2"}, {"room_id": "3"}], nextPageCursor=None),
+        ]
+        for results, cursors in self.run_both(pages):
+            self.assertEqual(
+                results,
+                [{"room_id": "1"}, {"room_id": "2"}, {"room_id": "3"}],
+            )
+            self.assertEqual(cursors, ["", "b"])
+
 
 if __name__ == "__main__":
     unittest.main()
