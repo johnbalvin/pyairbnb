@@ -6,9 +6,7 @@ ep = "https://www.airbnb.com"
 
 regx_api_key = re.compile(r'"api_config":{"key":".+?"')
 
-# Airbnb's long-lived public web client key, accepted by the GraphQL API.
-# The homepage parse can fail on unexpected landing pages or markup changes;
-# callers would rather have a working key than an exception.
+# Airbnb's long-lived public web client key, used as a last resort when the homepage parse fails.
 FALLBACK_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
 
 def get(proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT) -> str:
