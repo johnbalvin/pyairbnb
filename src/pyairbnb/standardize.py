@@ -171,7 +171,7 @@ def from_details(meta):
                 data["is_guest_favorite"] = section_data["isGuestFavorite"]
 
 
-    sd = utils.get_nested_value(meta,"data.presentation.stayProductDetailPage.sections.sbuiData")
+    sd = utils.get_nested_value(meta,"data.presentation.stayProductDetailPage.sections.sbuiData",{}) or {}
     for section in utils.get_nested_value(sd,"sectionConfiguration.root.sections",[]):
         typeName=utils.get_nested_value(section,"sectionData.__typename","")
         if typeName == "PdpHostOverviewDefaultSection":
@@ -235,10 +235,24 @@ def from_details(meta):
                     data["highlights"].append(highliting)
             case "PdpDescriptionSection":
                 data["description"]=  utils.get_nested_value(section,"section.htmlDescription.htmlText","")
-            case "AmenitiesSection":  
-                for amenityGroupRaw in utils.get_nested_value(meta,"data.node.pdpPresentation.amenities.seeAllAmenitiesGroups",[]):
+            case "AmenitiesSection":
+                amenities_root = utils.get_nested_value(meta,"data.node.pdpPresentation.amenities",{}) or {}
+                groups_raw = (
+                    utils.get_nested_value(amenities_root,"seeAllAmenitiesGroups",[])
+                    or utils.get_nested_value(amenities_root,"previewAmenitiesGroups",[])
+                    or []
+                )
+                for amenityGroupRaw in groups_raw:
+                    group_title = amenityGroupRaw.get("title","") or ""
+                    # Airbnb lists excluded amenities under a "not included" /
+                    # "doesn't include" group.
+                    group_title_lower = group_title.lower()
+                    not_included = any(
+                        phrase in group_title_lower
+                        for phrase in ("not included", "doesn't include", "don't include")
+                    )
                     amenityGroup={
-                        "title": amenityGroupRaw.get("title",""),
+                        "title": group_title,
                         "values": [],
                     }
                     for amenityRaw in amenityGroupRaw.get("amenities",[]):
@@ -246,10 +260,31 @@ def from_details(meta):
                             "title":     amenityRaw.get("title",""),
                             "subtitle":  utils.get_nested_value(amenityRaw,"subtitle.text",""),
                             "icon":      amenityRaw.get("icon",""),
-                            "available": amenityRaw.get("available",""),
+                            "available": False if not_included else amenityRaw.get("available", True),
                         }
                         amenityGroup["values"].append(amenity)
                     data["amenities"].append(amenityGroup)
+    # Fallbacks for pages where the primary title/description sections are
+    # missing or empty. Only fields that are still blank get filled.
+    pdp_sections = utils.get_nested_value(meta,"data.presentation.stayProductDetailPage.sections",{}) or {}
+    metadata = utils.get_nested_value(pdp_sections,"metadata",{}) or {}
+    seo_title = utils.get_nested_value(metadata,"seoFeatures.title","")
+    share_title = utils.get_nested_value(metadata,"sharingConfig.title","")
+    if not data.get("title",""):
+        data["title"] = seo_title.split(" - ")[0].strip() if seo_title else share_title
+    if share_title and not data["sub_description"]["title"]:
+        data["sub_description"]["title"] = share_title
+    if not data.get("description",""):
+        description_parts = []
+        for section in utils.get_nested_value(pdp_sections,"sections",[]) or []:
+            if section.get("sectionId") == "DESCRIPTION_MODAL":
+                for item in utils.get_nested_value(section,"section.items",[]) or []:
+                    html_text = (utils.get_nested_value(item,"html.htmlText","") or "").strip()
+                    if html_text:
+                        header = utils.get_nested_value(item,"title","")
+                        description_parts.append(f"{header}: {html_text}" if header else html_text)
+        if description_parts:
+            data["description"] = "\n\n".join(description_parts)
     return data
 
 def decode_listing_id(base64_id: str) -> int:
