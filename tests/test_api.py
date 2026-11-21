@@ -1,6 +1,8 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from curl_cffi import requests
+
 from pyairbnb import api
 
 
@@ -32,6 +34,18 @@ class ApiGetTests(unittest.TestCase):
             '<input name="payload" value="abc">'
         )
         post.return_value = response("<html>still no api_config</html>")
+
+        self.assertEqual(api.get(""), api.FALLBACK_API_KEY)
+        post.assert_called_once()
+
+    @patch("pyairbnb.api.requests.post")
+    @patch("pyairbnb.api.requests.get")
+    def test_falls_back_when_handoff_request_fails(self, get, post):
+        get.return_value = response(
+            '<form action="https://www.airbnb.ca/geo/handoff">'
+            '<input name="payload" value="abc">'
+        )
+        post.side_effect = requests.exceptions.Timeout("handoff timed out")
 
         self.assertEqual(api.get(""), api.FALLBACK_API_KEY)
         post.assert_called_once()

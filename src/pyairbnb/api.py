@@ -43,14 +43,17 @@ def get(proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT) -> str:
         if handoff_match and payload_match:
             handoff_url = handoff_match.group(1)
             payload_value = payload_match.group(1)
-            response = requests.post(
-                handoff_url,
-                data={"version": "1", "payload": payload_value},
-                headers=headers,
-                proxies=proxies,
-                timeout=60,
-            )
-            response.raise_for_status()
+            try:
+                response = requests.post(
+                    handoff_url,
+                    data={"version": "1", "payload": payload_value},
+                    headers=headers,
+                    proxies=proxies,
+                    timeout=60,
+                )
+                response.raise_for_status()
+            except requests.exceptions.RequestException:
+                return FALLBACK_API_KEY
             body = response.text
             api_key_match = regx_api_key.search(body)
 
