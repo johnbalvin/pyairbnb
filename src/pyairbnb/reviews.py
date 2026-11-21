@@ -134,12 +134,13 @@ def get(
     language: str = "en",
     proxy_url: str | None = None,
     timeout: Timeout = DEFAULT_TIMEOUT,
+    cookies: dict | None = None,
 ) -> list:
     offset = 0
     all_reviews = []
     while True:
         reviews = get_from_offset(
-            api_key, offset, product_id, currency, language, proxy_url, timeout=timeout
+            api_key, offset, product_id, currency, language, proxy_url, timeout=timeout, cookies=cookies
         )
         all_reviews.extend(reviews)
         if len(reviews) < _REVIEWS_PAGE_SIZE:
@@ -156,6 +157,7 @@ def get_from_offset(
     language: str = "en",
     proxy_url: str | None = None,
     timeout: Timeout = DEFAULT_TIMEOUT,
+    cookies: dict | None = None,
 ) -> list:
     global PERSISTED_QUERY_HASH
 
@@ -190,7 +192,7 @@ def get_from_offset(
         url = f"{BASE_URL}/{query_hash}/?{urlencode(query)}"
 
         try:
-            response = requests.get(url, headers=headers, proxies=proxies, timeout=timeout)
+            response = requests.get(url, headers=headers, proxies=proxies, timeout=timeout, cookies=cookies)
 
             if response.status_code in (400, 404):
                 raise _ReviewsResponseError(
