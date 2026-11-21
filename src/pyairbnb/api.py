@@ -6,6 +6,9 @@ ep = "https://www.airbnb.com"
 
 regx_api_key = re.compile(r'"api_config":{"key":".+?"')
 
+# Airbnb's long-lived public web client key, used as a last resort when the homepage parse fails.
+FALLBACK_API_KEY = "d306zoyjsyarp7ifhu67rjxn52tv0t20"
+
 def get(proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT) -> str:
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
@@ -52,7 +55,7 @@ def get(proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT) -> str:
             api_key_match = regx_api_key.search(body)
 
     if not api_key_match:
-        raise Exception("Could not parse Airbnb API key from the homepage response.")
+        return FALLBACK_API_KEY
 
     api_key = api_key_match.group()
     api_key = api_key.replace('"api_config":{"key":"', '')
