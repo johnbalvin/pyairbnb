@@ -270,6 +270,7 @@ def get_reviews(room_url: str ,language: str = "en", proxy_url: str = "", timeou
         proxy_url (str): The proxy URL.
         language (str): The language (default is 'en').
         currency (str): The currency (default is 'USD').
+        cookies (dict): Optional session cookies sent with every request; used to fetch data as a logged-in account.
 
     Returns:
         dict: Reviews data.
@@ -293,6 +294,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
         check_out (str): Check-out date for price information.
         language (str): The language (default is 'en').
         proxy_url (str): Proxy URL.
+        cookies (dict): Optional session cookies sent with every request; used to fetch prices as a logged-in account (some host discounts only appear for authenticated sessions).
 
     Returns:
         dict: A dictionary with all room details.

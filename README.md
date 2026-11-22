@@ -317,3 +317,25 @@ calendar_data = pyairbnb.get_calendar(room_id, "", proxy_url)
 with open('calendar.json', 'w', encoding='utf-8') as f:
     f.write(json.dumps(calendar_data))  # Extract calendar data and save it to a file
 ```
+
+### Retrieve Prices as a Logged-in Account (Session Cookies)
+Airbnb shows some host discounts only to logged-in sessions. Pass your own session
+cookies to `get_details` or `get_reviews` to fetch the price your account will
+actually pay instead of the anonymous quote; omit `cookies` to keep anonymous
+behavior. Cookies are optional, passed at your own risk, and never stored.
+
+```python
+import pyairbnb
+import json
+
+room_url = "https://www.airbnb.com/rooms/30931885"
+checkin = "2026-05-12"
+checkout = "2026-05-17"
+# Dict of your Airbnb session cookies, e.g. copied from a logged-in browser
+cookies = {"airbnb_session": "...", "kbv2": "..."}
+
+# Prices, reviews, and details as your logged-in account sees them
+data = pyairbnb.get_details(
+    room_url=room_url, check_in=checkin, check_out=checkout, cookies=cookies
+)
+```
