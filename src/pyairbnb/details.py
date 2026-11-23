@@ -14,7 +14,7 @@ def _airbnb_ca_fallback(room_url: str) -> str | None:
     return urlunparse(parsed._replace(netloc=netloc))
 
 
-def get(room_url: str, language: str, proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT):
+def get(room_url: str, language: str, proxy_url: str, timeout: Timeout = DEFAULT_TIMEOUT, cookies: dict | None = None):
     headers = {
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
         "Accept-Language": language,
@@ -42,7 +42,7 @@ def get(room_url: str, language: str, proxy_url: str, timeout: Timeout = DEFAULT
     last_parse_error: Exception | None = None
     for candidate_url in candidate_urls:
         response = requests.get(
-            candidate_url, headers=headers, proxies=proxies, timeout=timeout
+            candidate_url, headers=headers, proxies=proxies, timeout=timeout, cookies=cookies
         )
         response.raise_for_status()
         try:

@@ -261,7 +261,7 @@ def get_calendar(
         warnings.warn(CalendarContractWarning(error.issues), stacklevel=2)
         return raw_calendar
 
-def get_reviews(room_url: str ,language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
+def get_reviews(room_url: str ,language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT, cookies: dict | None = None):
     """
     Retrieves review data for a specified product.
 
@@ -270,17 +270,18 @@ def get_reviews(room_url: str ,language: str = "en", proxy_url: str = "", timeou
         proxy_url (str): The proxy URL.
         language (str): The language (default is 'en').
         currency (str): The currency (default is 'USD').
+        cookies (dict): Optional session cookies sent with every request; used to fetch data as a logged-in account.
 
     Returns:
         dict: Reviews data.
     """
-    data, price_input, cookies = details.get(room_url, language, proxy_url, timeout=timeout)
+    data, price_input, harvested_cookies = details.get(room_url, language, proxy_url, timeout=timeout, cookies=cookies)
     product_id = price_input["product_id"]
     api_key = price_input["api_key"]
 
-    return reviews.get(api_key, product_id, "USD", language, proxy_url, timeout=timeout)
+    return reviews.get(api_key, product_id, "USD", language, proxy_url, timeout=timeout, cookies=cookies)
 
-def get_details(room_url: str = None, room_id: int = None, domain: str = "www.airbnb.com", check_in: str = None, check_out: str = None, adults: int = 1, currency: str = "USD", language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT):
+def get_details(room_url: str = None, room_id: int = None, domain: str = "www.airbnb.com", check_in: str = None, check_out: str = None, adults: int = 1, currency: str = "USD", language: str = "en", proxy_url: str = "", timeout: Timeout = DEFAULT_TIMEOUT, cookies: dict | None = None):
     """
     Retrieves all details (calendar, reviews, price, and host details) for a specified room.
 
@@ -293,6 +294,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
         check_out (str): Check-out date for price information.
         language (str): The language (default is 'en').
         proxy_url (str): Proxy URL.
+        cookies (dict): Optional session cookies sent with every request; used to fetch prices as a logged-in account (some host discounts only appear for authenticated sessions).
 
     Returns:
         dict: A dictionary with all room details.
@@ -303,7 +305,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     if not room_url:
         room_url = f"https://{domain}/rooms/{room_id}"
     
-    data, price_input, cookies = details.get(room_url, language, proxy_url, timeout=timeout)
+    data, price_input, harvested_cookies = details.get(room_url, language, proxy_url, timeout=timeout, cookies=cookies)
     product_id = price_input["product_id"]
     api_key = price_input["api_key"]
     
@@ -314,7 +316,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
         room_id = path.split("/")[-1]
     
     # Get calendar and reviews data
-    data["reviews"] = reviews.get(api_key, product_id, currency, language, proxy_url, timeout=timeout)
+    data["reviews"] = reviews.get(api_key, product_id, currency, language, proxy_url, timeout=timeout, cookies=cookies)
     data["calendar"] = get_calendar(
         api_key,
         str(room_id),
@@ -334,7 +336,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
             language=language,
             impresion_id=price_input["impression_id"],
             api_key=api_key,
-            cookies=cookies,
+            cookies=cookies or harvested_cookies,
             proxy_url=proxy_url,
             timeout=timeout,
         )
@@ -342,7 +344,7 @@ def get_details(room_url: str = None, room_id: int = None, domain: str = "www.ai
     
     # Get host details
     host_id = data["host"]["id"]
-    data["host_details"] = host_details.get(api_key, cookies, host_id, language, proxy_url, timeout=timeout)
+    data["host_details"] = host_details.get(api_key, cookies or harvested_cookies, host_id, language, proxy_url, timeout=timeout)
     
     return data
 
