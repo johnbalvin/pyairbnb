@@ -247,8 +247,8 @@ import json
 # Define listing URL and parameters
 room_url = "https://www.airbnb.com/rooms/21734211"  # Listing URL
 currency = "USD"  # Currency for the listing details
-checkin = "2026-05-12"
-checkout = "2026-05-17"
+checkin = "2027-05-12"
+checkout = "2027-05-17"
 # Retrieve listing details without including the price information (no check-in/check-out dates)
 data = pyairbnb.get_details(room_url=room_url, currency=currency,adults=2, language="ja")
 
